@@ -16,18 +16,6 @@ var ANIMAL_BORDER = {
   cat: 0xcc9933, dog: 0x996633
 };
 
-var ANIMAL_SIDE = {
-  sheep: 0xc8c2b5, chick: 0xccaa22, pig: 0xdd8899,
-  rabbit: 0xb8b8dd, cow: 0xa0c8a0, duck: 0x80b060,
-  cat: 0xddbb70, dog: 0xaa7840
-};
-
-var ANIMAL_BOTTOM = {
-  sheep: 0xa09a8a, chick: 0xaa8800, pig: 0xbb6677,
-  rabbit: 0x9090bb, cow: 0x80a880, duck: 0x609040,
-  cat: 0xbb9950, dog: 0x885a28
-};
-
 class Animal {
   constructor(scene, data, cellSize, offsetX, offsetY) {
     this.scene       = scene;
@@ -43,9 +31,7 @@ class Animal {
     this.isExiting   = false;
 
     this._arrowObjs = [];
-    this._depth     = Math.max(4, Math.floor(cellSize * 0.12));
-
-    this.container = scene.add.container(0, 0);
+    this.container  = scene.add.container(0, 0);
     this._createVisual();
   }
 
@@ -54,34 +40,16 @@ class Animal {
     const pad = 4;
     const w   = this.orientation === 'H' ? this.size * cs - pad * 2 : cs - pad * 2;
     const h   = this.orientation === 'V' ? this.size * cs - pad * 2 : cs - pad * 2;
-    const d   = this._depth;
 
     const fill   = ANIMAL_COLORS[this.animalType];
     const border = ANIMAL_BORDER[this.animalType];
-    const side   = ANIMAL_SIDE[this.animalType];
-    const btm    = ANIMAL_BOTTOM[this.animalType];
 
-    // Pixel shadow (offset block)
+    // Drop shadow
     const shadow = this.scene.add.graphics();
-    shadow.fillStyle(0x000000, 0.5);
-    shadow.fillRect(d + 2, h + d + 1, w, d);
-    shadow.fillRect(w + d + 1, d + 2, d, h);
+    shadow.fillStyle(0x000000, 0.3);
+    shadow.fillRect(3, 5, w, h);
 
-    // Bottom face (pixel style - no rounding)
-    this.btmGfx = this.scene.add.graphics();
-    this.btmGfx.fillStyle(btm, 1);
-    this.btmGfx.fillRect(d, h, w, d + 1);
-    this.btmGfx.lineStyle(2, border, 1);
-    this.btmGfx.strokeRect(d, h, w, d + 1);
-
-    // Right face (pixel style)
-    this.sideGfx = this.scene.add.graphics();
-    this.sideGfx.fillStyle(side, 1);
-    this.sideGfx.fillRect(w, d, d + 1, h);
-    this.sideGfx.lineStyle(2, border, 1);
-    this.sideGfx.strokeRect(w, d, d + 1, h);
-
-    // Top face
+    // Body
     this.bodyGfx = this.scene.add.graphics();
     this._drawBody(this.bodyGfx, w, h, fill, border, false);
 
@@ -90,7 +58,7 @@ class Animal {
 
     // Emojis
     const emoji    = ANIMAL_EMOJI[this.animalType];
-    const fontSize = Math.min(cs * 0.46, 22);
+    const fontSize = Math.min(cs * 0.48, 24);
     if (this.size >= 2 && this.orientation === 'H') {
       this.emoji1 = this._makeEmoji(cs * 0.5,  h / 2, emoji, fontSize);
       this.emoji2 = this._makeEmoji(cs * 1.5,  h / 2, emoji, fontSize);
@@ -105,7 +73,7 @@ class Animal {
       this.emoji1 = this._makeEmoji(w / 2, h / 2, emoji, fontSize * 1.2);
     }
 
-    this.container.add([shadow, this.btmGfx, this.sideGfx, this.bodyGfx, this.ringGfx]);
+    this.container.add([shadow, this.bodyGfx, this.ringGfx]);
     if (this.emoji3) this.container.add(this.emoji3);
     if (this.emoji2) this.container.add(this.emoji2);
     this.container.add(this.emoji1);
@@ -117,29 +85,22 @@ class Animal {
   }
 
   _makeEmoji(x, y, emoji, size) {
-    return this.scene.add.text(x, y, emoji, {
-      fontSize: size + 'px'
-    }).setOrigin(0.5, 0.5);
+    return this.scene.add.text(x, y, emoji, { fontSize: size + 'px' }).setOrigin(0.5, 0.5);
   }
 
   _drawBody(gfx, w, h, fill, border, highlighted) {
     gfx.clear();
-    // Main fill
     gfx.fillStyle(fill, 1);
     gfx.fillRect(0, 0, w, h);
-    // Top-left bright pixel highlight
-    gfx.fillStyle(0xffffff, 0.30);
-    gfx.fillRect(2, 2, w - 4, 4);
-    gfx.fillRect(2, 2, 4, h - 4);
-    // Bottom-right dark pixel shadow
-    gfx.fillStyle(0x000000, 0.15);
-    gfx.fillRect(2, h - 5, w - 4, 3);
-    gfx.fillRect(w - 5, 2, 3, h - 4);
-    // Pixel border (2px sharp)
+    // Pixel highlight strips
+    gfx.fillStyle(0xffffff, 0.25);
+    gfx.fillRect(2, 2, w - 4, 3);
+    gfx.fillRect(2, 2, 3, h - 4);
+    // Border
     gfx.lineStyle(highlighted ? 3 : 2, highlighted ? 0x00ff88 : border, 1);
     gfx.strokeRect(0, 0, w, h);
     if (highlighted) {
-      gfx.lineStyle(2, 0x00ff88, 0.5);
+      gfx.lineStyle(1, 0x00ff88, 0.4);
       gfx.strokeRect(-3, -3, w + 6, h + 6);
     }
   }
@@ -172,16 +133,14 @@ class Animal {
       this.scene.tweens.add({
         targets: this.container,
         x: this.offsetX + this.col * cs + pad,
-        duration: 80,
-        ease: 'Cubic.easeOut'
+        duration: 80, ease: 'Cubic.easeOut'
       });
     } else {
       this.row = newCell;
       this.scene.tweens.add({
         targets: this.container,
         y: this.offsetY + this.row * cs + pad,
-        duration: 80,
-        ease: 'Cubic.easeOut'
+        duration: 80, ease: 'Cubic.easeOut'
       });
     }
   }
@@ -208,8 +167,7 @@ class Animal {
       x: pos.x, y: pos.y,
       scaleX: 0.4, scaleY: 0.4,
       alpha: 0,
-      duration: 240,
-      ease: 'Cubic.easeIn',
+      duration: 240, ease: 'Cubic.easeIn',
       onComplete: () => this.destroy()
     });
   }
@@ -219,12 +177,7 @@ class Animal {
     const pad = 4;
     const w   = this.orientation === 'H' ? this.size * cs - pad * 2 : cs - pad * 2;
     const h   = this.orientation === 'V' ? this.size * cs - pad * 2 : cs - pad * 2;
-
-    this._drawBody(this.bodyGfx, w, h,
-      ANIMAL_COLORS[this.animalType],
-      ANIMAL_BORDER[this.animalType],
-      active);
-
+    this._drawBody(this.bodyGfx, w, h, ANIMAL_COLORS[this.animalType], ANIMAL_BORDER[this.animalType], active);
     this.ringGfx.clear();
   }
 
@@ -246,7 +199,6 @@ class Animal {
       if (!show) return;
 
       const g = this.scene.add.graphics();
-      // Pixel-style arrow button
       g.fillStyle(0x111122, 1);
       g.fillRect(-18, -18, 36, 36);
       g.lineStyle(2, 0x00ff88, 1);
@@ -257,10 +209,7 @@ class Animal {
 
       const zone = this.scene.add.zone(ax - 22, ay - 22, 44, 44).setOrigin(0);
       zone.setInteractive({ useHandCursor: true });
-      zone.on('pointerup', (ptr) => {
-        ptr.event.stopPropagation();
-        onSlide(dir);
-      });
+      zone.on('pointerup', (ptr) => { ptr.event.stopPropagation(); onSlide(dir); });
       zone.on('pointerover', () => { g.setAlpha(0.8); g.setScale(1.1); });
       zone.on('pointerout',  () => { g.setAlpha(1);   g.setScale(1); });
 
@@ -272,7 +221,7 @@ class Animal {
   _drawArrowTriangle(g, dir) {
     const s = 8;
     switch (dir) {
-      case 'left':  g.fillTriangle(-s, 0, s, -s, s, s);  break;
+      case 'left':  g.fillTriangle(-s, 0, s, -s, s, s);   break;
       case 'right': g.fillTriangle( s, 0, -s, -s, -s, s); break;
       case 'up':    g.fillTriangle(0, -s, -s, s, s, s);   break;
       case 'down':  g.fillTriangle(0,  s, -s, -s, s, -s); break;
