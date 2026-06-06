@@ -6,20 +6,26 @@ class GameScene extends Phaser.Scene {
     this.cellSize  = 60;
     this.gridSize  = 6;
     this.animals   = new Map();
-    this.oGrid     = [];      // occupancy grid
+    this.oGrid     = [];
     this.moveCount = 0;
     this.undosLeft = 3;
-    this.history   = [];      // array of {id→{row,col}} snapshots
-    this.selected  = null;    // currently selected Animal
-    this.swipeStart = null;   // {x,y} at pointerdown for swipe detection
+    this.history   = [];
+    this.selected  = null;
+    this.swipeStart = null;
     this.isAnimating = false;
   }
 
   preload() {}
 
   create() {
+    const levelData = LEVELS[this.levelId - 1];
+    if (!levelData) { this.scene.start('MenuScene'); return; }
+
     const W = this.scale.width;
     const H = this.scale.height;
+
+    this.gridSize    = levelData.gridSize || 6;
+    this.cellSize    = Math.floor((W - 40) / this.gridSize);
     this.gridOffsetX = Math.floor((W - this.gridSize * this.cellSize) / 2);
     this.gridOffsetY = 115;
 
@@ -70,19 +76,21 @@ class GameScene extends Phaser.Scene {
       g.lineBetween(ox, oy + i * cs, ox + gs * cs, oy + i * cs);
     }
 
-    // Outer fence (with exit gaps at centre of each side)
+    // Outer fence with exit gaps at centre of each side
     g.lineStyle(4, 0x2a4a18, 1);
-    const gap = 2 * cs;      // gap width = 2 cells
-    const mid = cs * 2;      // gap starts at col/row 2
+    const gapCells = 2;
+    const midCell  = Math.floor((gs - gapCells) / 2);
+    const mid = midCell * cs;
+    const gap = gapCells * cs;
 
-    // Top: gap at cols 2-3
+    // Top
     g.lineBetween(ox,           oy, ox + mid,        oy);
     g.lineBetween(ox + mid + gap, oy, ox + gs * cs,  oy);
     // Bottom
     const by = oy + gs * cs;
     g.lineBetween(ox,           by, ox + mid,        by);
     g.lineBetween(ox + mid + gap, by, ox + gs * cs,  by);
-    // Left: gap at rows 2-3
+    // Left
     g.lineBetween(ox, oy,           ox, oy + mid);
     g.lineBetween(ox, oy + mid + gap, ox, oy + gs * cs);
     // Right
@@ -92,8 +100,8 @@ class GameScene extends Phaser.Scene {
 
     // Exit arrows
     g.fillStyle(0xffffff, 0.7);
-    const cx = ox + mid + cs;     // horizontal centre of gap
-    const cy = oy + mid + cs;     // vertical centre of gap
+    const cx = ox + mid + cs;
+    const cy = oy + mid + cs;
     const as = 10;
     g.fillTriangle(cx - as, oy - 6, cx + as, oy - 6, cx, oy - 20);
     g.fillTriangle(cx - as, by + 6, cx + as, by + 6, cx, by + 20);
@@ -118,8 +126,14 @@ class GameScene extends Phaser.Scene {
       fontSize: '13px', fontFamily: 'Arial', color: '#aaddaa'
     });
 
+    // Grid size badge
+    const gs = this.gridSize;
+    this.add.text(14, 56, gs + '×' + gs, {
+      fontSize: '11px', fontFamily: 'Arial', color: '#88cc66'
+    });
+
     // Par display
-    this.add.text(14, 58, `par: ${levelData.par}`, {
+    this.add.text(14, 70, `par: ${levelData.par}`, {
       fontSize: '12px', fontFamily: 'Arial', color: '#88cc66', alpha: 0.9
     });
 
@@ -210,7 +224,7 @@ class GameScene extends Phaser.Scene {
     const animal = this.animals.get(id);
     if (!animal || animal.isExiting) { this._deselect(); return; }
 
-    if (this.selected === animal) return; // already selected
+    if (this.selected === animal) return;
 
     this._deselect();
     this.selected = animal;
@@ -266,7 +280,6 @@ class GameScene extends Phaser.Scene {
     const animal = this.selected;
     if (!animal || animal.isExiting || this.isAnimating) return;
 
-    // Validate direction matches orientation
     const isHDir = direction === 'left' || direction === 'right';
     const isVDir = direction === 'up'   || direction === 'down';
     if ((animal.orientation === 'H' && !isHDir) ||
@@ -300,9 +313,6 @@ class GameScene extends Phaser.Scene {
   // ── Collision / move calculation ─────────────────────────────────
 
   _maxSlide(animal, dir) {
-    // dir: +1 or -1
-    // Returns number of steps animal can slide in that direction (≥0).
-    // Stops at blocking animal or at exit position (first step that would exit).
     const gs = this.gridSize;
     const start = animal.orientation === 'H' ? animal.col : animal.row;
     let valid = 0;
@@ -310,7 +320,6 @@ class GameScene extends Phaser.Scene {
     for (let s = 1; s <= gs * 2; s++) {
       const test = start + dir * s;
 
-      // Check cells for collision (skip off-grid)
       let blocked = false;
       for (let i = 0; i < animal.size; i++) {
         const r = animal.orientation === 'V' ? test + i : animal.row;
@@ -323,7 +332,6 @@ class GameScene extends Phaser.Scene {
 
       valid = s;
 
-      // Did we reach the exit position?
       const exits = animal.orientation === 'H'
         ? (dir > 0 ? test >= gs : test + animal.size <= 0)
         : (dir > 0 ? test >= gs : test + animal.size <= 0);
@@ -333,15 +341,12 @@ class GameScene extends Phaser.Scene {
   }
 
   _updateOGrid(animal, newPrimary) {
-    // Clear old cells
     animal.getOccupiedCells().forEach(({ row, col }) => {
       if (row >= 0 && row < this.gridSize && col >= 0 && col < this.gridSize)
         this.oGrid[row][col] = null;
     });
-    // Update logical position
     if (animal.orientation === 'H') animal.col = newPrimary;
     else                             animal.row = newPrimary;
-    // Set new cells
     animal.getOccupiedCells().forEach(({ row, col }) => {
       if (row >= 0 && row < this.gridSize && col >= 0 && col < this.gridSize)
         this.oGrid[row][col] = animal.id;
@@ -366,7 +371,6 @@ class GameScene extends Phaser.Scene {
     if (!exitDir) return;
 
     animal.isExiting = true;
-    // Clear oGrid
     animal.getOccupiedCells().forEach(({ row, col }) => {
       if (row >= 0 && row < gs && col >= 0 && col < gs)
         this.oGrid[row][col] = null;
@@ -377,7 +381,6 @@ class GameScene extends Phaser.Scene {
 
     animal.exitAnimation(exitDir);
 
-    // Brief flash
     const flash = this.add.graphics();
     flash.fillStyle(0xffffff, 0.35);
     flash.fillRect(0, 0, this.scale.width, this.scale.height);
@@ -406,13 +409,11 @@ class GameScene extends Phaser.Scene {
     const px = (W - pw) / 2;
     const py = (H - ph) / 2;
 
-    // Overlay
     const ov = this.add.graphics();
     ov.fillStyle(0x000000, 0);
     ov.fillRect(0, 0, W, H);
     this.tweens.add({ targets: ov, fillAlpha: 0.65, duration: 300 });
 
-    // Panel
     const panel = this.add.graphics();
     panel.fillStyle(0x1e5a18, 1);
     panel.fillRoundedRect(px, py, pw, ph, 20);
@@ -424,8 +425,7 @@ class GameScene extends Phaser.Scene {
       color: '#ffffff', stroke: '#1a4a18', strokeThickness: 4
     }).setOrigin(0.5);
 
-    // Stars (animated)
-    const starStr = '⭐'.repeat(stars) + '☆'.repeat(3 - stars);
+    const starStr = '⭐'.repeat(Math.max(0, stars)) + '☆'.repeat(Math.max(0, 3 - stars));
     const starTxt = this.add.text(W / 2, py + 75, '   ', {
       fontSize: '32px'
     }).setOrigin(0.5).setAlpha(0);
@@ -446,7 +446,6 @@ class GameScene extends Phaser.Scene {
       fontSize: '15px', fontFamily: 'Arial', color: '#aaddaa'
     }).setOrigin(0.5);
 
-    // Buttons
     const hasPrev = this.levelId > 1;
     const hasNext = this.levelId < LEVELS.length;
 

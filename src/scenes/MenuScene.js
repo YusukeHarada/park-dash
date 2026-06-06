@@ -77,9 +77,16 @@ class MenuScene extends Phaser.Scene {
     }).setOrigin(0.5);
 
     // Theme name
-    this.add.text(x + w / 2, y + 34, level.theme, {
+    this.add.text(x + w / 2, y + 32, level.theme, {
       fontSize: '11px', fontFamily: 'Arial',
       color: locked ? '#445544' : '#aaddaa'
+    }).setOrigin(0.5);
+
+    // Grid size badge
+    const gs = level.gridSize || 6;
+    const badgeColor = gs === 8 ? '#ff9944' : gs === 7 ? '#44ccff' : '#88cc66';
+    this.add.text(x + w / 2, y + 46, gs + '×' + gs, {
+      fontSize: '10px', fontFamily: 'Arial', color: locked ? '#445544' : badgeColor
     }).setOrigin(0.5);
 
     // Stars or lock
