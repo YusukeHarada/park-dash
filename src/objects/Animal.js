@@ -16,14 +16,12 @@ var ANIMAL_BORDER = {
   cat: 0xcc9933, dog: 0x996633
 };
 
-// Side face (right)
 var ANIMAL_SIDE = {
   sheep: 0xc8c2b5, chick: 0xccaa22, pig: 0xdd8899,
   rabbit: 0xb8b8dd, cow: 0xa0c8a0, duck: 0x80b060,
   cat: 0xddbb70, dog: 0xaa7840
 };
 
-// Bottom face
 var ANIMAL_BOTTOM = {
   sheep: 0xa09a8a, chick: 0xaa8800, pig: 0xbb6677,
   rabbit: 0x9090bb, cow: 0x80a880, duck: 0x609040,
@@ -52,48 +50,47 @@ class Animal {
   }
 
   _createVisual() {
-    const cs    = this.cellSize;
-    const pad   = 5;
-    const w     = this.orientation === 'H' ? this.size * cs - pad * 2 : cs - pad * 2;
-    const h     = this.orientation === 'V' ? this.size * cs - pad * 2 : cs - pad * 2;
-    const r     = 10;
-    const d     = this._depth;
+    const cs  = this.cellSize;
+    const pad = 4;
+    const w   = this.orientation === 'H' ? this.size * cs - pad * 2 : cs - pad * 2;
+    const h   = this.orientation === 'V' ? this.size * cs - pad * 2 : cs - pad * 2;
+    const d   = this._depth;
 
     const fill   = ANIMAL_COLORS[this.animalType];
     const border = ANIMAL_BORDER[this.animalType];
     const side   = ANIMAL_SIDE[this.animalType];
     const btm    = ANIMAL_BOTTOM[this.animalType];
 
-    // Drop shadow
+    // Pixel shadow (offset block)
     const shadow = this.scene.add.graphics();
-    shadow.fillStyle(0x000000, 0.20);
-    shadow.fillRoundedRect(d + 3, h + d + 2, w - 2, d, 2);
-    shadow.fillRoundedRect(w + d + 2, d + 3, d, h - 2, 2);
+    shadow.fillStyle(0x000000, 0.5);
+    shadow.fillRect(d + 2, h + d + 1, w, d);
+    shadow.fillRect(w + d + 1, d + 2, d, h);
 
-    // Bottom face
+    // Bottom face (pixel style - no rounding)
     this.btmGfx = this.scene.add.graphics();
     this.btmGfx.fillStyle(btm, 1);
-    this.btmGfx.fillRoundedRect(d, h, w, d + 1, 3);
-    this.btmGfx.lineStyle(1, border, 0.4);
-    this.btmGfx.strokeRoundedRect(d, h, w, d + 1, 3);
+    this.btmGfx.fillRect(d, h, w, d + 1);
+    this.btmGfx.lineStyle(2, border, 1);
+    this.btmGfx.strokeRect(d, h, w, d + 1);
 
-    // Right face
+    // Right face (pixel style)
     this.sideGfx = this.scene.add.graphics();
     this.sideGfx.fillStyle(side, 1);
-    this.sideGfx.fillRoundedRect(w, d, d + 1, h, 3);
-    this.sideGfx.lineStyle(1, border, 0.4);
-    this.sideGfx.strokeRoundedRect(w, d, d + 1, h, 3);
+    this.sideGfx.fillRect(w, d, d + 1, h);
+    this.sideGfx.lineStyle(2, border, 1);
+    this.sideGfx.strokeRect(w, d, d + 1, h);
 
-    // Top face (main body)
+    // Top face
     this.bodyGfx = this.scene.add.graphics();
-    this._drawBody(this.bodyGfx, w, h, r, fill, border, false);
+    this._drawBody(this.bodyGfx, w, h, fill, border, false);
 
     // Selection ring
     this.ringGfx = this.scene.add.graphics();
 
-    // Emojis on top face
+    // Emojis
     const emoji    = ANIMAL_EMOJI[this.animalType];
-    const fontSize = Math.min(cs * 0.48, 24);
+    const fontSize = Math.min(cs * 0.46, 22);
     if (this.size >= 2 && this.orientation === 'H') {
       this.emoji1 = this._makeEmoji(cs * 0.5,  h / 2, emoji, fontSize);
       this.emoji2 = this._makeEmoji(cs * 1.5,  h / 2, emoji, fontSize);
@@ -125,28 +122,30 @@ class Animal {
     }).setOrigin(0.5, 0.5);
   }
 
-  _drawBody(gfx, w, h, r, fill, border, highlighted) {
+  _drawBody(gfx, w, h, fill, border, highlighted) {
     gfx.clear();
-    // Top-left highlight (light reflection)
-    gfx.fillStyle(0xffffff, 0.18);
-    gfx.fillRoundedRect(0, 0, w, h, r);
     // Main fill
     gfx.fillStyle(fill, 1);
-    gfx.fillRoundedRect(2, 2, w - 4, h - 4, r - 2);
-    // Inner gradient shimmer (top strip)
-    gfx.fillStyle(0xffffff, 0.12);
-    gfx.fillRoundedRect(4, 4, w - 8, Math.floor(h * 0.35), r - 2);
-    // Border
-    gfx.lineStyle(highlighted ? 3 : 2, highlighted ? 0xffffff : border, 1);
-    gfx.strokeRoundedRect(0, 0, w, h, r);
+    gfx.fillRect(0, 0, w, h);
+    // Top-left bright pixel highlight
+    gfx.fillStyle(0xffffff, 0.30);
+    gfx.fillRect(2, 2, w - 4, 4);
+    gfx.fillRect(2, 2, 4, h - 4);
+    // Bottom-right dark pixel shadow
+    gfx.fillStyle(0x000000, 0.15);
+    gfx.fillRect(2, h - 5, w - 4, 3);
+    gfx.fillRect(w - 5, 2, 3, h - 4);
+    // Pixel border (2px sharp)
+    gfx.lineStyle(highlighted ? 3 : 2, highlighted ? 0x00ff88 : border, 1);
+    gfx.strokeRect(0, 0, w, h);
     if (highlighted) {
-      gfx.lineStyle(2, 0xffffff, 0.5);
-      gfx.strokeRoundedRect(-3, -3, w + 6, h + 6, r + 3);
+      gfx.lineStyle(2, 0x00ff88, 0.5);
+      gfx.strokeRect(-3, -3, w + 6, h + 6);
     }
   }
 
   _syncPosition() {
-    const pad = 5;
+    const pad = 4;
     this.container.setPosition(
       this.offsetX + this.col * this.cellSize + pad,
       this.offsetY + this.row * this.cellSize + pad
@@ -166,14 +165,14 @@ class Animal {
 
   moveTo(newCell) {
     this.scene.tweens.killTweensOf(this.container);
-    const pad = 5;
+    const pad = 4;
     const cs  = this.cellSize;
     if (this.orientation === 'H') {
       this.col = newCell;
       this.scene.tweens.add({
         targets: this.container,
         x: this.offsetX + this.col * cs + pad,
-        duration: 100,
+        duration: 80,
         ease: 'Cubic.easeOut'
       });
     } else {
@@ -181,7 +180,7 @@ class Animal {
       this.scene.tweens.add({
         targets: this.container,
         y: this.offsetY + this.row * cs + pad,
-        duration: 100,
+        duration: 80,
         ease: 'Cubic.easeOut'
       });
     }
@@ -192,36 +191,36 @@ class Animal {
     this.scene.tweens.killTweensOf(this.container);
 
     const cs  = this.cellSize;
-    const pad = 5;
+    const pad = 4;
     const w   = this.orientation === 'H' ? this.size * cs : cs;
     const h   = this.orientation === 'V' ? this.size * cs : cs;
     const pos = { x: this.container.x, y: this.container.y };
 
     switch (direction) {
-      case 'right': pos.x = this.offsetX + 6 * cs + w;    break;
-      case 'left':  pos.x = this.offsetX - w - pad * 2;   break;
-      case 'down':  pos.y = this.offsetY + 6 * cs + h;    break;
-      case 'up':    pos.y = this.offsetY - h - pad * 2;   break;
+      case 'right': pos.x = this.offsetX + this.scene.gridSize * cs + w; break;
+      case 'left':  pos.x = this.offsetX - w - pad * 2;                  break;
+      case 'down':  pos.y = this.offsetY + this.scene.gridSize * cs + h; break;
+      case 'up':    pos.y = this.offsetY - h - pad * 2;                  break;
     }
 
     this.scene.tweens.add({
       targets: this.container,
       x: pos.x, y: pos.y,
-      scaleX: 0.5, scaleY: 0.5,
+      scaleX: 0.4, scaleY: 0.4,
       alpha: 0,
-      duration: 280,
-      ease: 'Back.easeIn',
+      duration: 240,
+      ease: 'Cubic.easeIn',
       onComplete: () => this.destroy()
     });
   }
 
   setHighlight(active) {
     const cs  = this.cellSize;
-    const pad = 5;
+    const pad = 4;
     const w   = this.orientation === 'H' ? this.size * cs - pad * 2 : cs - pad * 2;
     const h   = this.orientation === 'V' ? this.size * cs - pad * 2 : cs - pad * 2;
 
-    this._drawBody(this.bodyGfx, w, h, 10,
+    this._drawBody(this.bodyGfx, w, h,
       ANIMAL_COLORS[this.animalType],
       ANIMAL_BORDER[this.animalType],
       active);
@@ -229,40 +228,41 @@ class Animal {
     this.ringGfx.clear();
   }
 
-  // ── Direction arrows ──────────────────────────────────────────
-
   showArrows(canLeft, canRight, canUp, canDown, onSlide) {
     this.hideArrows();
     const cs  = this.cellSize;
-    const pad = 5;
+    const pad = 4;
     const w   = this.orientation === 'H' ? this.size * cs - pad * 2 : cs - pad * 2;
     const h   = this.orientation === 'V' ? this.size * cs - pad * 2 : cs - pad * 2;
 
     const dirs = [
-      { dir: 'left',  show: canLeft,  ax: -28, ay: h / 2 },
-      { dir: 'right', show: canRight, ax: w + 28, ay: h / 2 },
-      { dir: 'up',    show: canUp,    ax: w / 2, ay: -28 },
-      { dir: 'down',  show: canDown,  ax: w / 2, ay: h + 28 }
+      { dir: 'left',  show: canLeft,  ax: -26, ay: h / 2 },
+      { dir: 'right', show: canRight, ax: w + 26, ay: h / 2 },
+      { dir: 'up',    show: canUp,    ax: w / 2, ay: -26 },
+      { dir: 'down',  show: canDown,  ax: w / 2, ay: h + 26 }
     ];
 
     dirs.forEach(({ dir, show, ax, ay }) => {
       if (!show) return;
 
       const g = this.scene.add.graphics();
-      g.fillStyle(0xffffff, 0.9);
-      g.fillCircle(0, 0, 20);
-      g.fillStyle(0x336622, 1);
+      // Pixel-style arrow button
+      g.fillStyle(0x111122, 1);
+      g.fillRect(-18, -18, 36, 36);
+      g.lineStyle(2, 0x00ff88, 1);
+      g.strokeRect(-18, -18, 36, 36);
+      g.fillStyle(0x00ff88, 1);
       this._drawArrowTriangle(g, dir);
       g.setPosition(ax, ay);
 
-      const zone = this.scene.add.zone(ax - 24, ay - 24, 48, 48).setOrigin(0);
+      const zone = this.scene.add.zone(ax - 22, ay - 22, 44, 44).setOrigin(0);
       zone.setInteractive({ useHandCursor: true });
       zone.on('pointerup', (ptr) => {
         ptr.event.stopPropagation();
         onSlide(dir);
       });
-      zone.on('pointerover', () => { g.setAlpha(1); g.setScale(1.15); });
-      zone.on('pointerout',  () => { g.setAlpha(1); g.setScale(1); });
+      zone.on('pointerover', () => { g.setAlpha(0.8); g.setScale(1.1); });
+      zone.on('pointerout',  () => { g.setAlpha(1);   g.setScale(1); });
 
       this.container.add([g, zone]);
       this._arrowObjs.push(g, zone);
@@ -270,7 +270,7 @@ class Animal {
   }
 
   _drawArrowTriangle(g, dir) {
-    const s = 9;
+    const s = 8;
     switch (dir) {
       case 'left':  g.fillTriangle(-s, 0, s, -s, s, s);  break;
       case 'right': g.fillTriangle( s, 0, -s, -s, -s, s); break;

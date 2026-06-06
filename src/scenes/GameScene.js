@@ -1,17 +1,19 @@
+var PIXEL_FONT = '"Press Start 2P", monospace';
+
 class GameScene extends Phaser.Scene {
   constructor() { super({ key: 'GameScene' }); }
 
   init(data) {
-    this.levelId   = data.levelId || 1;
-    this.cellSize  = 60;
-    this.gridSize  = 6;
-    this.animals   = new Map();
-    this.oGrid     = [];
-    this.moveCount = 0;
-    this.undosLeft = 3;
-    this.history   = [];
-    this.selected  = null;
-    this.swipeStart = null;
+    this.levelId     = data.levelId || 1;
+    this.cellSize    = 60;
+    this.gridSize    = 6;
+    this.animals     = new Map();
+    this.oGrid       = [];
+    this.moveCount   = 0;
+    this.undosLeft   = 3;
+    this.history     = [];
+    this.selected    = null;
+    this.swipeStart  = null;
     this.isAnimating = false;
   }
 
@@ -27,17 +29,16 @@ class GameScene extends Phaser.Scene {
     this.gridSize    = levelData.gridSize || 6;
     this.cellSize    = Math.floor((W - 40) / this.gridSize);
     this.gridOffsetX = Math.floor((W - this.gridSize * this.cellSize) / 2);
-    this.gridOffsetY = 115;
+    this.gridOffsetY = 120;
 
     this._initOGrid();
     this._drawBackground(W, H);
     this._drawGrid();
     this._createUI(W);
     this._loadLevel();
+    this._drawScanlines(W, H);
     this._setupInput();
   }
-
-  // ── Grid / Scene init ────────────────────────────────────────────
 
   _initOGrid() {
     this.oGrid = Array.from({ length: this.gridSize }, () => new Array(this.gridSize).fill(null));
@@ -45,22 +46,16 @@ class GameScene extends Phaser.Scene {
 
   _drawBackground(W, H) {
     const bg = this.add.graphics();
-    // Gradient-like background (dark at top, lighter mid)
-    bg.fillStyle(0x2a5a22, 1);
+    // Dark retro background
+    bg.fillStyle(0x0a0a1a, 1);
     bg.fillRect(0, 0, W, H);
-    bg.fillStyle(0x3a7a30, 1);
-    bg.fillRect(0, H * 0.2, W, H * 0.8);
-    // Decorative grass tufts
-    bg.fillStyle(0x4a8a40, 0.25);
-    for (let i = 0; i < 16; i++) {
-      bg.fillEllipse((i * 67 + 23) % W, (i * 83 + 41) % H,
-        60 + (i * 13) % 40, 20 + (i * 7) % 15);
+    // Subtle dot grid pattern
+    bg.fillStyle(0x1a1a2e, 1);
+    for (let y = 0; y < H; y += 16) {
+      for (let x = 0; x < W; x += 16) {
+        bg.fillRect(x, y, 2, 2);
+      }
     }
-    // Floor shadow under grid
-    const gs = this.gridSize, cs = this.cellSize;
-    const ox = this.gridOffsetX, oy = this.gridOffsetY;
-    bg.fillStyle(0x000000, 0.18);
-    bg.fillRoundedRect(ox + 6, oy + gs * cs + 4, gs * cs, 14, 4);
   }
 
   _drawGrid() {
@@ -70,67 +65,70 @@ class GameScene extends Phaser.Scene {
     const gs = this.gridSize;
     const g  = this.add.graphics();
 
-    // Cell backgrounds with subtle 3D tile effect
+    // Outer border (thick pixel border)
+    g.fillStyle(0x00ff88, 1);
+    g.fillRect(ox - 3, oy - 3, gs * cs + 6, 3);
+    g.fillRect(ox - 3, oy + gs * cs, gs * cs + 6, 3);
+    g.fillRect(ox - 3, oy - 3, 3, gs * cs + 6);
+    g.fillRect(ox + gs * cs, oy - 3, 3, gs * cs + 6);
+
+    // Cell backgrounds
     for (let r = 0; r < gs; r++) {
       for (let c = 0; c < gs; c++) {
         const even = (r + c) % 2 === 0;
-        const base = even ? 0x68a856 : 0x589048;
-        const dark = even ? 0x4a7a3a : 0x3a6a2a;
-        const lite = even ? 0x7abb68 : 0x6aab58;
-        const cx = ox + c * cs + 1, cy = oy + r * cs + 1;
-        const cw = cs - 2, ch = cs - 2;
-        // Base fill
-        g.fillStyle(base, 1);
-        g.fillRect(cx, cy, cw, ch);
-        // Top-left highlight strip
-        g.fillStyle(lite, 0.35);
-        g.fillRect(cx, cy, cw, 4);
-        g.fillRect(cx, cy, 4, ch);
-        // Bottom-right shadow strip
-        g.fillStyle(dark, 0.4);
-        g.fillRect(cx, cy + ch - 4, cw, 4);
-        g.fillRect(cx + cw - 4, cy, 4, ch);
+        g.fillStyle(even ? 0x0d2b0d : 0x0a220a, 1);
+        g.fillRect(ox + c * cs, oy + r * cs, cs, cs);
+        // Pixel highlight top-left
+        g.fillStyle(0x1a5a1a, 0.5);
+        g.fillRect(ox + c * cs, oy + r * cs, cs, 2);
+        g.fillRect(ox + c * cs, oy + r * cs, 2, cs);
       }
     }
 
-    // Inner grid lines
-    g.lineStyle(1, 0x3a5a28, 1);
+    // Grid lines (dim)
+    g.lineStyle(1, 0x1a4a1a, 1);
     for (let i = 1; i < gs; i++) {
       g.lineBetween(ox + i * cs, oy, ox + i * cs, oy + gs * cs);
       g.lineBetween(ox, oy + i * cs, ox + gs * cs, oy + i * cs);
     }
 
-    // Outer fence with exit gaps at centre of each side
-    g.lineStyle(4, 0x2a4a18, 1);
+    // Exit gaps
     const gapCells = 2;
     const midCell  = Math.floor((gs - gapCells) / 2);
     const mid = midCell * cs;
     const gap = gapCells * cs;
+    const by  = oy + gs * cs;
+    const rx  = ox + gs * cs;
 
-    // Top
-    g.lineBetween(ox,           oy, ox + mid,        oy);
-    g.lineBetween(ox + mid + gap, oy, ox + gs * cs,  oy);
-    // Bottom
-    const by = oy + gs * cs;
-    g.lineBetween(ox,           by, ox + mid,        by);
-    g.lineBetween(ox + mid + gap, by, ox + gs * cs,  by);
-    // Left
-    g.lineBetween(ox, oy,           ox, oy + mid);
-    g.lineBetween(ox, oy + mid + gap, ox, oy + gs * cs);
-    // Right
-    const rx = ox + gs * cs;
-    g.lineBetween(rx, oy,           rx, oy + mid);
-    g.lineBetween(rx, oy + mid + gap, rx, oy + gs * cs);
+    // Draw exit gap (erase border, paint gap color)
+    g.fillStyle(0x0a0a1a, 1);
+    g.fillRect(ox + mid, oy - 4, gap, 5);
+    g.fillRect(ox + mid, by - 1, gap, 5);
+    g.fillRect(ox - 4, oy + mid, 5, gap);
+    g.fillRect(rx - 1, oy + mid, 5, gap);
 
-    // Exit arrows
-    g.fillStyle(0xffffff, 0.7);
+    // Exit arrows (pixel style ▲▼◀▶)
     const cx = ox + mid + cs;
     const cy = oy + mid + cs;
-    const as = 10;
-    g.fillTriangle(cx - as, oy - 6, cx + as, oy - 6, cx, oy - 20);
-    g.fillTriangle(cx - as, by + 6, cx + as, by + 6, cx, by + 20);
-    g.fillTriangle(ox - 6, cy - as, ox - 6, cy + as, ox - 20, cy);
-    g.fillTriangle(rx + 6, cy - as, rx + 6, cy + as, rx + 20, cy);
+    const as = 7;
+    g.fillStyle(0xffff00, 1);
+    g.fillTriangle(cx - as, oy - 7,  cx + as, oy - 7,  cx, oy - 18);
+    g.fillTriangle(cx - as, by + 7,  cx + as, by + 7,  cx, by + 18);
+    g.fillTriangle(ox - 7, cy - as,  ox - 7, cy + as,  ox - 18, cy);
+    g.fillTriangle(rx + 7, cy - as,  rx + 7, cy + as,  rx + 18, cy);
+
+    // Floor shadow
+    g.fillStyle(0x000000, 0.4);
+    g.fillRect(ox + 4, oy + gs * cs + 3, gs * cs, 8);
+  }
+
+  _drawScanlines(W, H) {
+    const sl = this.add.graphics();
+    sl.fillStyle(0x000000, 0.06);
+    for (let y = 0; y < H; y += 4) {
+      sl.fillRect(0, y, W, 2);
+    }
+    sl.setDepth(100);
   }
 
   _createUI(W) {
@@ -138,40 +136,37 @@ class GameScene extends Phaser.Scene {
 
     // Header bg
     const hdr = this.add.graphics();
-    hdr.fillStyle(0x1a4a18, 0.88);
-    hdr.fillRect(0, 0, W, 108);
+    hdr.fillStyle(0x000000, 1);
+    hdr.fillRect(0, 0, W, 112);
+    hdr.lineStyle(2, 0x00ff88, 1);
+    hdr.strokeRect(0, 0, W, 112);
 
-    // Level title
-    this.add.text(14, 12, `Level ${this.levelId}`, {
-      fontSize: '22px', fontFamily: 'Arial Black, Arial',
-      color: '#ffffff', stroke: '#1a4a18', strokeThickness: 4
+    // Level number (pixel font)
+    this.add.text(12, 10, 'LV.' + this.levelId, {
+      fontSize: '14px', fontFamily: PIXEL_FONT, color: '#00ff88'
     });
-    this.add.text(14, 38, levelData.theme, {
-      fontSize: '13px', fontFamily: 'Arial', color: '#aaddaa'
+    this.add.text(12, 32, levelData.theme, {
+      fontSize: '7px', fontFamily: PIXEL_FONT, color: '#44ffaa'
     });
 
-    // Grid size badge
     const gs = this.gridSize;
-    this.add.text(14, 56, gs + '×' + gs, {
-      fontSize: '11px', fontFamily: 'Arial', color: '#88cc66'
+    this.add.text(12, 48, gs + 'x' + gs, {
+      fontSize: '7px', fontFamily: PIXEL_FONT, color: '#ffff00'
     });
-
-    // Par display
-    this.add.text(14, 70, `par: ${levelData.par}`, {
-      fontSize: '12px', fontFamily: 'Arial', color: '#88cc66', alpha: 0.9
+    this.add.text(12, 64, 'PAR:' + levelData.par, {
+      fontSize: '7px', fontFamily: PIXEL_FONT, color: '#aaaaaa'
     });
 
     // Move counter (centre)
-    this.moveText = this.add.text(W / 2, 20, 'Moves: 0', {
-      fontSize: '20px', fontFamily: 'Arial Black, Arial',
-      color: '#ffffff', stroke: '#1a4a18', strokeThickness: 3
+    this.moveText = this.add.text(W / 2, 12, 'MOVE:0', {
+      fontSize: '10px', fontFamily: PIXEL_FONT, color: '#ffffff'
     }).setOrigin(0.5, 0);
 
-    // Undo icons (right side)
+    // Undo icons (pixel style)
     this._undoIcons = [];
     for (let i = 0; i < 3; i++) {
-      const icon = this.add.text(W - 22 - i * 28, 16, '↩', {
-        fontSize: '22px', fontFamily: 'Arial', color: '#88dd44'
+      const icon = this.add.text(W - 16 - i * 26, 12, 'U', {
+        fontSize: '10px', fontFamily: PIXEL_FONT, color: '#00ff88'
       }).setOrigin(0.5, 0).setInteractive({ useHandCursor: true });
       icon.on('pointerup', () => this._undo());
       this._undoIcons.push(icon);
@@ -179,33 +174,36 @@ class GameScene extends Phaser.Scene {
     this._refreshUndoUI();
 
     // Menu button
-    const menuBg = this.add.graphics();
-    menuBg.fillStyle(0x2a5a18, 1);
-    menuBg.fillRoundedRect(14, 75, 60, 26, 6);
-    this.add.text(44, 88, '≡ Menu', {
-      fontSize: '12px', fontFamily: 'Arial', color: '#c8e8a0'
-    }).setOrigin(0.5);
-    this.add.zone(14, 75, 60, 26).setOrigin(0)
-      .setInteractive({ useHandCursor: true })
-      .on('pointerup', () => this.scene.start('MenuScene'));
+    this._pixelBtn(14, 78, 56, 22, '≡MENU', () => this.scene.start('MenuScene'));
 
     // Retry button
-    const retBg = this.add.graphics();
-    retBg.fillStyle(0x2a5a18, 1);
-    retBg.fillRoundedRect(W - 80, 70, 66, 26, 6);
-    this.add.text(W - 47, 83, '↺ Retry', {
-      fontSize: '12px', fontFamily: 'Arial', color: '#c8e8a0'
-    }).setOrigin(0.5);
-    this.add.zone(W - 80, 70, 66, 26).setOrigin(0)
-      .setInteractive({ useHandCursor: true })
-      .on('pointerup', () => this.scene.start('GameScene', { levelId: this.levelId }));
+    this._pixelBtn(W - 72, 78, 58, 22, '↺RETRY', () => this.scene.start('GameScene', { levelId: this.levelId }));
+  }
+
+  _pixelBtn(x, y, w, h, label, cb) {
+    const bg = this.add.graphics();
+    const draw = (lit) => {
+      bg.clear();
+      bg.fillStyle(lit ? 0x005522 : 0x001a0d, 1);
+      bg.fillRect(x, y, w, h);
+      bg.lineStyle(2, lit ? 0x00ff88 : 0x007744, 1);
+      bg.strokeRect(x, y, w, h);
+    };
+    draw(false);
+    this.add.text(x + w / 2, y + h / 2, label, {
+      fontSize: '6px', fontFamily: PIXEL_FONT, color: '#00ff88'
+    }).setOrigin(0.5, 0.5);
+    this.add.zone(x, y, w, h).setOrigin(0).setInteractive({ useHandCursor: true })
+      .on('pointerover', () => draw(true))
+      .on('pointerout',  () => draw(false))
+      .on('pointerup', cb);
   }
 
   _refreshUndoUI() {
     this._undoIcons.forEach((icon, i) => {
       const active = (2 - i) < this.undosLeft;
-      icon.setAlpha(active ? 1 : 0.28);
-      icon.setColor(active ? '#88dd44' : '#446633');
+      icon.setAlpha(active ? 1 : 0.25);
+      icon.setColor(active ? '#00ff88' : '#224422');
     });
   }
 
@@ -228,8 +226,6 @@ class GameScene extends Phaser.Scene {
     this.input.on('pointerup',   this._onPointerUp,   this);
   }
 
-  // ── Input ────────────────────────────────────────────────────────
-
   _onPointerDown(pointer) {
     if (this.isAnimating) return;
     this.swipeStart = { x: pointer.x, y: pointer.y };
@@ -238,16 +234,12 @@ class GameScene extends Phaser.Scene {
     const row = Math.floor((pointer.y - this.gridOffsetY) / this.cellSize);
 
     if (row < 0 || row >= this.gridSize || col < 0 || col >= this.gridSize) {
-      this._deselect();
-      return;
+      this._deselect(); return;
     }
-
     const id = this.oGrid[row][col];
     if (!id) { this._deselect(); return; }
-
     const animal = this.animals.get(id);
     if (!animal || animal.isExiting) { this._deselect(); return; }
-
     if (this.selected === animal) return;
 
     this._deselect();
@@ -258,27 +250,17 @@ class GameScene extends Phaser.Scene {
 
   _onPointerMove(pointer) {
     if (!this.selected || this.isAnimating || !this.swipeStart) return;
-
     const dx = pointer.x - this.swipeStart.x;
     const dy = pointer.y - this.swipeStart.y;
     const THRESHOLD = 22;
-
     if (this.selected.orientation === 'H') {
-      if (Math.abs(dx) > THRESHOLD) {
-        this._doAutoSlide(dx > 0 ? 'right' : 'left');
-      }
+      if (Math.abs(dx) > THRESHOLD) this._doAutoSlide(dx > 0 ? 'right' : 'left');
     } else {
-      if (Math.abs(dy) > THRESHOLD) {
-        this._doAutoSlide(dy > 0 ? 'down' : 'up');
-      }
+      if (Math.abs(dy) > THRESHOLD) this._doAutoSlide(dy > 0 ? 'down' : 'up');
     }
   }
 
-  _onPointerUp() {
-    this.swipeStart = null;
-  }
-
-  // ── Selection / Arrows ──────────────────────────────────────────
+  _onPointerUp() { this.swipeStart = null; }
 
   _deselect() {
     if (!this.selected) return;
@@ -292,13 +274,8 @@ class GameScene extends Phaser.Scene {
     const canRight = animal.orientation === 'H' && this._maxSlide(animal,  1) > 0;
     const canUp    = animal.orientation === 'V' && this._maxSlide(animal, -1) > 0;
     const canDown  = animal.orientation === 'V' && this._maxSlide(animal,  1) > 0;
-
-    animal.showArrows(canLeft, canRight, canUp, canDown, (dir) => {
-      this._doAutoSlide(dir);
-    });
+    animal.showArrows(canLeft, canRight, canUp, canDown, (dir) => this._doAutoSlide(dir));
   }
-
-  // ── Auto-slide ───────────────────────────────────────────────────
 
   _doAutoSlide(direction) {
     const animal = this.selected;
@@ -327,23 +304,20 @@ class GameScene extends Phaser.Scene {
     this.swipeStart = null;
 
     this.isAnimating = true;
-    this.time.delayedCall(110, () => {
+    this.time.delayedCall(100, () => {
       this.isAnimating = false;
       this._checkForExit(animal, direction);
       this._checkWin();
     });
   }
 
-  // ── Collision / move calculation ─────────────────────────────────
-
   _maxSlide(animal, dir) {
-    const gs = this.gridSize;
+    const gs    = this.gridSize;
     const start = animal.orientation === 'H' ? animal.col : animal.row;
-    let valid = 0;
+    let valid   = 0;
 
     for (let s = 1; s <= gs * 2; s++) {
       const test = start + dir * s;
-
       let blocked = false;
       for (let i = 0; i < animal.size; i++) {
         const r = animal.orientation === 'V' ? test + i : animal.row;
@@ -353,12 +327,8 @@ class GameScene extends Phaser.Scene {
         if (occ && occ !== animal.id) { blocked = true; break; }
       }
       if (blocked) break;
-
       valid = s;
-
-      const exits = animal.orientation === 'H'
-        ? (dir > 0 ? test >= gs : test + animal.size <= 0)
-        : (dir > 0 ? test >= gs : test + animal.size <= 0);
+      const exits = dir > 0 ? test >= gs : test + animal.size <= 0;
       if (exits) break;
     }
     return valid;
@@ -377,21 +347,18 @@ class GameScene extends Phaser.Scene {
     });
   }
 
-  // ── Exit / Win ───────────────────────────────────────────────────
-
   _checkForExit(animal, direction) {
     if (animal.isExiting) return;
     const gs = this.gridSize;
     let exitDir = null;
 
     if (animal.orientation === 'H') {
-      if (animal.col >= gs)              exitDir = 'right';
+      if (animal.col >= gs)                   exitDir = 'right';
       else if (animal.col + animal.size <= 0) exitDir = 'left';
     } else {
-      if (animal.row >= gs)              exitDir = 'down';
+      if (animal.row >= gs)                   exitDir = 'down';
       else if (animal.row + animal.size <= 0) exitDir = 'up';
     }
-
     if (!exitDir) return;
 
     animal.isExiting = true;
@@ -400,28 +367,27 @@ class GameScene extends Phaser.Scene {
         this.oGrid[row][col] = null;
     });
     this.animals.delete(animal.id);
-
-    if (this.selected === animal) { this.selected = null; }
+    if (this.selected === animal) this.selected = null;
 
     animal.exitAnimation(exitDir);
     this._spawnExitParticles(animal.container.x, animal.container.y);
   }
 
   _spawnExitParticles(x, y) {
-    const colors = [0xffdd44, 0x88ff44, 0x44ddff, 0xff88cc];
-    for (let i = 0; i < 6; i++) {
+    const colors = [0x00ff88, 0xffff00, 0x00ffff, 0xff88ff];
+    for (let i = 0; i < 8; i++) {
       const star = this.add.graphics();
       star.fillStyle(colors[i % colors.length], 1);
-      star.fillCircle(0, 0, 5);
-      star.setPosition(x + Phaser.Math.Between(-20, 20), y + Phaser.Math.Between(-10, 10));
+      // Pixel star (just a rect for 8bit style)
+      star.fillRect(-3, -3, 6, 6);
+      star.setPosition(x + Phaser.Math.Between(-24, 24), y + Phaser.Math.Between(-12, 12));
       this.tweens.add({
         targets: star,
-        x: star.x + Phaser.Math.Between(-40, 40),
-        y: star.y + Phaser.Math.Between(-50, 10),
+        x: star.x + Phaser.Math.Between(-50, 50),
+        y: star.y + Phaser.Math.Between(-60, 10),
         alpha: 0,
-        scaleX: 0.2,
-        scaleY: 0.2,
-        duration: 400 + i * 40,
+        scaleX: 0.1, scaleY: 0.1,
+        duration: 350 + i * 30,
         ease: 'Cubic.easeOut',
         onComplete: () => star.destroy()
       });
@@ -434,98 +400,94 @@ class GameScene extends Phaser.Scene {
     }
   }
 
-  // ── Win screen ───────────────────────────────────────────────────
-
   _showWinScreen() {
-    const par    = LEVELS[this.levelId - 1].par;
-    const stars  = this.moveCount <= par ? 3
-                 : this.moveCount <= Math.floor(par * 1.5) ? 2 : 1;
-
+    const par   = LEVELS[this.levelId - 1].par;
+    const stars = this.moveCount <= par ? 3
+                : this.moveCount <= Math.floor(par * 1.5) ? 2 : 1;
     this._saveProgress(stars);
 
     const W  = this.scale.width;
     const H  = this.scale.height;
-    const pw = 300, ph = 310;
+    const pw = 320, ph = 280;
     const px = (W - pw) / 2;
     const py = (H - ph) / 2;
 
+    // Overlay
     const ov = this.add.graphics();
-    ov.fillStyle(0x000000, 0);
+    ov.fillStyle(0x000000, 0.75);
     ov.fillRect(0, 0, W, H);
-    this.tweens.add({ targets: ov, fillAlpha: 0.65, duration: 300 });
 
+    // Panel (pixel border style)
     const panel = this.add.graphics();
-    panel.fillStyle(0x1e5a18, 1);
-    panel.fillRoundedRect(px, py, pw, ph, 20);
-    panel.lineStyle(3, 0x66cc33, 1);
-    panel.strokeRoundedRect(px, py, pw, ph, 20);
+    panel.fillStyle(0x000000, 1);
+    panel.fillRect(px, py, pw, ph);
+    panel.lineStyle(3, 0x00ff88, 1);
+    panel.strokeRect(px, py, pw, ph);
+    panel.lineStyle(1, 0x004422, 1);
+    panel.strokeRect(px + 4, py + 4, pw - 8, ph - 8);
 
-    this.add.text(W / 2, py + 32, '🎉 Level Clear!', {
-      fontSize: '26px', fontFamily: 'Arial Black, Arial',
-      color: '#ffffff', stroke: '#1a4a18', strokeThickness: 4
+    this.add.text(W / 2, py + 24, 'LEVEL CLEAR!', {
+      fontSize: '13px', fontFamily: PIXEL_FONT, color: '#00ff88'
     }).setOrigin(0.5);
 
-    const starStr = '⭐'.repeat(Math.max(0, stars)) + '☆'.repeat(Math.max(0, 3 - stars));
-    const starTxt = this.add.text(W / 2, py + 75, '   ', {
-      fontSize: '32px'
+    const starStr = '★'.repeat(Math.max(0, stars)) + '☆'.repeat(Math.max(0, 3 - stars));
+    const starTxt = this.add.text(W / 2, py + 60, starStr, {
+      fontSize: '24px', fontFamily: PIXEL_FONT,
+      color: stars === 3 ? '#ffff00' : '#aaaaaa'
     }).setOrigin(0.5).setAlpha(0);
 
-    this.time.delayedCall(200, () => {
-      starTxt.setText(starStr);
+    this.time.delayedCall(150, () => {
       this.tweens.add({ targets: starTxt, alpha: 1, scaleX: 1.2, scaleY: 1.2,
-        duration: 300, yoyo: true, ease: 'Bounce.easeOut' });
+        duration: 200, yoyo: true });
     });
 
-    this.add.text(W / 2, py + 115, `${this.moveCount} moves  (par: ${par})`, {
-      fontSize: '16px', fontFamily: 'Arial',
-      color: stars === 3 ? '#88ff44' : '#ccddaa'
+    this.add.text(W / 2, py + 100, this.moveCount + ' MOVES', {
+      fontSize: '9px', fontFamily: PIXEL_FONT, color: '#ffffff'
+    }).setOrigin(0.5);
+    this.add.text(W / 2, py + 118, 'PAR: ' + par, {
+      fontSize: '8px', fontFamily: PIXEL_FONT, color: '#888888'
     }).setOrigin(0.5);
 
-    const label = stars === 3 ? 'Perfect! 🌟' : stars === 2 ? 'Great!' : 'Cleared!';
-    this.add.text(W / 2, py + 145, label, {
-      fontSize: '15px', fontFamily: 'Arial', color: '#aaddaa'
+    const label = stars === 3 ? 'PERFECT!!' : stars === 2 ? 'GREAT!' : 'CLEARED!';
+    this.add.text(W / 2, py + 140, label, {
+      fontSize: '10px', fontFamily: PIXEL_FONT,
+      color: stars === 3 ? '#ffff00' : '#00ff88'
     }).setOrigin(0.5);
 
-    const hasPrev = this.levelId > 1;
     const hasNext = this.levelId < LEVELS.length;
+    let btnY = py + 170;
 
     if (stars < 3) {
-      this._winBtn(W / 2, py + 195, '↺ Retry', 0x3a6a28, 0x5a8a48, () => {
-        this.scene.start('GameScene', { levelId: this.levelId });
-      });
+      this._winBtn(W / 2, btnY, 'RETRY', () => this.scene.start('GameScene', { levelId: this.levelId }));
+      btnY += 36;
     }
     if (hasNext) {
-      this._winBtn(W / 2, py + (stars < 3 ? 245 : 210), 'Next Level →', 0x44aa22, 0x66cc44, () => {
-        this.scene.start('GameScene', { levelId: this.levelId + 1 });
-      });
+      this._winBtn(W / 2, btnY, 'NEXT >', () => this.scene.start('GameScene', { levelId: this.levelId + 1 }));
+      btnY += 36;
     }
-    this._winBtn(W / 2, py + (hasNext ? (stars < 3 ? 285 : 255) : (stars < 3 ? 245 : 210)), '≡ Menu', 0x2a5a18, 0x4a7a38, () => {
-      this.scene.start('MenuScene');
-    });
+    this._winBtn(W / 2, btnY, 'MENU', () => this.scene.start('MenuScene'));
   }
 
-  _winBtn(cx, cy, label, fill, hover, cb) {
-    const bw = 200, bh = 38;
+  _winBtn(cx, cy, label, cb) {
+    const bw = 180, bh = 30;
     const bx = cx - bw / 2, by = cy - bh / 2;
     const bg = this.add.graphics();
-    const draw = (c) => {
+    const draw = (lit) => {
       bg.clear();
-      bg.fillStyle(c, 1);
-      bg.fillRoundedRect(bx, by, bw, bh, 10);
-      bg.lineStyle(2, 0x88dd44, 0.8);
-      bg.strokeRoundedRect(bx, by, bw, bh, 10);
+      bg.fillStyle(lit ? 0x005522 : 0x001a0d, 1);
+      bg.fillRect(bx, by, bw, bh);
+      bg.lineStyle(2, lit ? 0x00ff88 : 0x007744, 1);
+      bg.strokeRect(bx, by, bw, bh);
     };
-    draw(fill);
+    draw(false);
     this.add.text(cx, cy, label, {
-      fontSize: '15px', fontFamily: 'Arial', color: '#ffffff', fontStyle: 'bold'
+      fontSize: '9px', fontFamily: PIXEL_FONT, color: '#00ff88'
     }).setOrigin(0.5);
     this.add.zone(bx, by, bw, bh).setOrigin(0).setInteractive({ useHandCursor: true })
       .on('pointerup', cb)
-      .on('pointerover', () => draw(hover))
-      .on('pointerout', () => draw(fill));
+      .on('pointerover', () => draw(true))
+      .on('pointerout',  () => draw(false));
   }
-
-  // ── Undo ─────────────────────────────────────────────────────────
 
   _saveSnapshot() {
     const snap = {};
@@ -535,7 +497,6 @@ class GameScene extends Phaser.Scene {
 
   _undo() {
     if (this.isAnimating || this.history.length === 0 || this.undosLeft === 0) return;
-
     const snap = this.history.pop();
     this._deselect();
     this._initOGrid();
@@ -559,10 +520,8 @@ class GameScene extends Phaser.Scene {
   }
 
   _updateMoveCounter() {
-    this.moveText.setText(`Moves: ${this.moveCount}`);
+    this.moveText.setText('MOVE:' + this.moveCount);
   }
-
-  // ── Progress ─────────────────────────────────────────────────────
 
   _saveProgress(stars) {
     try {
