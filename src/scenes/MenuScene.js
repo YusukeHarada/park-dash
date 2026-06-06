@@ -10,7 +10,7 @@ class MenuScene extends Phaser.Scene {
 
     this._drawBackground(W, H);
     this._drawHeader(W);
-    this._drawLevelGrid(W, prog);
+    this._drawLevelGrid(W, H, prog);
     this._drawFooter(W, H);
     this._drawScanlines(W, H);
   }
@@ -19,7 +19,6 @@ class MenuScene extends Phaser.Scene {
     const bg = this.add.graphics();
     bg.fillStyle(0x0a0a1a, 1);
     bg.fillRect(0, 0, W, H);
-    // Dot grid
     bg.fillStyle(0x1a1a2e, 1);
     for (let y = 0; y < H; y += 16) {
       for (let x = 0; x < W; x += 16) {
@@ -29,35 +28,33 @@ class MenuScene extends Phaser.Scene {
   }
 
   _drawHeader(W) {
-    // Header panel
+    // Compact header: 82px tall
     const hdr = this.add.graphics();
     hdr.fillStyle(0x000000, 1);
-    hdr.fillRect(0, 0, W, 110);
+    hdr.fillRect(0, 0, W, 82);
     hdr.lineStyle(2, 0x00ff88, 1);
-    hdr.strokeRect(0, 0, W, 110);
+    hdr.strokeRect(0, 0, W, 82);
 
-    // Blinking cursor effect title
-    this.add.text(W / 2, 18, 'ANIMAL', {
-      fontSize: '20px', fontFamily: PIXEL_FONT, color: '#00ff88'
+    this.add.text(W / 2, 10, 'ANIMAL ESCAPE!', {
+      fontSize: '16px', fontFamily: PIXEL_FONT, color: '#00ff88'
     }).setOrigin(0.5);
-    this.add.text(W / 2, 46, 'ESCAPE!', {
-      fontSize: '20px', fontFamily: PIXEL_FONT, color: '#ffff00'
+    this.add.text(W / 2, 40, '- SELECT STAGE -', {
+      fontSize: '7px', fontFamily: PIXEL_FONT, color: '#ffff00'
     }).setOrigin(0.5);
-    this.add.text(W / 2, 78, '- SELECT STAGE -', {
-      fontSize: '7px', fontFamily: PIXEL_FONT, color: '#888888'
-    }).setOrigin(0.5);
-    this.add.text(W / 2, 94, 'TAP ANIMAL > TAP ARROW / SWIPE', {
-      fontSize: '5px', fontFamily: PIXEL_FONT, color: '#444466'
+    this.add.text(W / 2, 60, 'TAP > TAP ARROW or SWIPE', {
+      fontSize: '5px', fontFamily: PIXEL_FONT, color: '#445566'
     }).setOrigin(0.5);
   }
 
-  _drawLevelGrid(W, prog) {
-    const cols  = 3;
-    const btnW  = 112, btnH = 80;
-    const gapX  = 6, gapY = 6;
-    const gridW = cols * btnW + (cols - 1) * gapX;
-    const startX = (W - gridW) / 2;
-    const startY = 118;
+  _drawLevelGrid(W, H, prog) {
+    // 4 columns × 5 rows = 20 levels, fits in 700px canvas
+    const cols   = 4;
+    const gapX   = 5, gapY = 5;
+    const btnW   = Math.floor((W - 10 - gapX * (cols - 1)) / cols); // ~88px
+    const btnH   = 66;
+    const gridW  = cols * btnW + (cols - 1) * gapX;
+    const startX = Math.floor((W - gridW) / 2);
+    const startY = 90;
 
     LEVELS.forEach((level, i) => {
       const col  = i % cols;
@@ -72,7 +69,7 @@ class MenuScene extends Phaser.Scene {
 
   _levelBtn(level, x, y, w, h, stars, locked) {
     const gs = level.gridSize || 6;
-    const borderColor = locked ? 0x223322
+    const borderColor = locked ? 0x1a2a1a
       : gs === 8 ? 0xff6600
       : gs === 7 ? 0x0088ff
       : 0x00ff88;
@@ -81,14 +78,11 @@ class MenuScene extends Phaser.Scene {
     const bg = this.add.graphics();
     const drawBg = (lit) => {
       bg.clear();
-      // Pixel drop shadow
-      bg.fillStyle(0x000000, 0.8);
-      bg.fillRect(x + 3, y + 3, w, h);
-      // Main fill
+      bg.fillStyle(0x000000, 0.7);
+      bg.fillRect(x + 2, y + 2, w, h);
       bg.fillStyle(lit ? 0x001a00 : fillColor, 1);
       bg.fillRect(x, y, w, h);
-      // Pixel border (double line style)
-      bg.lineStyle(2, locked ? 0x223322 : borderColor, 1);
+      bg.lineStyle(2, locked ? 0x1a2a1a : borderColor, 1);
       bg.strokeRect(x, y, w, h);
       if (!locked) {
         bg.lineStyle(1, 0x001100, 1);
@@ -98,16 +92,9 @@ class MenuScene extends Phaser.Scene {
     drawBg(false);
 
     // Level number
-    this.add.text(x + w / 2, y + 12, 'LV.' + String(level.id).padStart(2, '0'), {
-      fontSize: '9px', fontFamily: PIXEL_FONT,
-      color: locked ? '#223322' : '#00ff88'
-    }).setOrigin(0.5);
-
-    // Theme
-    const shortTheme = level.theme.length > 6 ? level.theme.slice(0, 5) + '..' : level.theme;
-    this.add.text(x + w / 2, y + 30, shortTheme, {
-      fontSize: '6px', fontFamily: PIXEL_FONT,
-      color: locked ? '#1a2a1a' : '#44bb44'
+    this.add.text(x + w / 2, y + 9, 'LV.' + String(level.id).padStart(2, '0'), {
+      fontSize: '8px', fontFamily: PIXEL_FONT,
+      color: locked ? '#1a2a1a' : '#00ff88'
     }).setOrigin(0.5);
 
     // Grid size badge
@@ -115,18 +102,18 @@ class MenuScene extends Phaser.Scene {
       : gs === 8 ? '#ff6600'
       : gs === 7 ? '#0088ff'
       : '#ffff00';
-    this.add.text(x + w / 2, y + 46, gs + 'x' + gs, {
+    this.add.text(x + w / 2, y + 26, gs + 'x' + gs, {
       fontSize: '7px', fontFamily: PIXEL_FONT, color: badgeColor
     }).setOrigin(0.5);
 
-    // Stars
+    // Stars or lock
     if (locked) {
-      this.add.text(x + w / 2, y + 62, 'LOCK', {
-        fontSize: '7px', fontFamily: PIXEL_FONT, color: '#223322'
+      this.add.text(x + w / 2, y + 44, 'LOCK', {
+        fontSize: '6px', fontFamily: PIXEL_FONT, color: '#223322'
       }).setOrigin(0.5);
     } else {
       const starStr = '★'.repeat(stars) + '☆'.repeat(3 - stars);
-      this.add.text(x + w / 2, y + 62, starStr, {
+      this.add.text(x + w / 2, y + 44, starStr, {
         fontSize: '10px', fontFamily: PIXEL_FONT,
         color: stars === 3 ? '#ffff00' : '#446644'
       }).setOrigin(0.5);
@@ -143,11 +130,10 @@ class MenuScene extends Phaser.Scene {
   _drawFooter(W, H) {
     const footer = this.add.graphics();
     footer.fillStyle(0x000000, 1);
-    footer.fillRect(0, H - 30, W, 30);
+    footer.fillRect(0, H - 24, W, 24);
     footer.lineStyle(1, 0x002200, 1);
-    footer.strokeRect(0, H - 30, W, 30);
-
-    this.add.text(W / 2, H - 15, 'ANIMAL ESCAPE  V2.1  (C)2025', {
+    footer.strokeRect(0, H - 24, W, 24);
+    this.add.text(W / 2, H - 12, 'ANIMAL ESCAPE V2.1  (C)2025', {
       fontSize: '5px', fontFamily: PIXEL_FONT, color: '#334433'
     }).setOrigin(0.5);
   }

@@ -29,7 +29,7 @@ class GameScene extends Phaser.Scene {
     this.gridSize    = levelData.gridSize || 6;
     this.cellSize    = Math.floor((W - 40) / this.gridSize);
     this.gridOffsetX = Math.floor((W - this.gridSize * this.cellSize) / 2);
-    this.gridOffsetY = 120;
+    this.gridOffsetY = 108;
 
     this._initOGrid();
     this._drawBackground(W, H);
@@ -134,50 +134,44 @@ class GameScene extends Phaser.Scene {
   _createUI(W) {
     const levelData = LEVELS[this.levelId - 1];
 
-    // Header bg
+    // Header bg (compact: 100px)
     const hdr = this.add.graphics();
     hdr.fillStyle(0x000000, 1);
-    hdr.fillRect(0, 0, W, 112);
+    hdr.fillRect(0, 0, W, 100);
     hdr.lineStyle(2, 0x00ff88, 1);
-    hdr.strokeRect(0, 0, W, 112);
+    hdr.strokeRect(0, 0, W, 100);
 
-    // Level number (pixel font)
-    this.add.text(12, 10, 'LV.' + this.levelId, {
-      fontSize: '14px', fontFamily: PIXEL_FONT, color: '#00ff88'
+    // Left: level info
+    this.add.text(10, 8, 'LV.' + String(this.levelId).padStart(2, '0'), {
+      fontSize: '12px', fontFamily: PIXEL_FONT, color: '#00ff88'
     });
-    this.add.text(12, 32, levelData.theme, {
-      fontSize: '7px', fontFamily: PIXEL_FONT, color: '#44ffaa'
+    this.add.text(10, 28, levelData.theme, {
+      fontSize: '6px', fontFamily: PIXEL_FONT, color: '#44ffaa'
     });
-
     const gs = this.gridSize;
-    this.add.text(12, 48, gs + 'x' + gs, {
-      fontSize: '7px', fontFamily: PIXEL_FONT, color: '#ffff00'
-    });
-    this.add.text(12, 64, 'PAR:' + levelData.par, {
-      fontSize: '7px', fontFamily: PIXEL_FONT, color: '#aaaaaa'
+    this.add.text(10, 44, gs + 'x' + gs + '  PAR:' + levelData.par, {
+      fontSize: '6px', fontFamily: PIXEL_FONT, color: '#ffff00'
     });
 
-    // Move counter (centre)
-    this.moveText = this.add.text(W / 2, 12, 'MOVE:0', {
-      fontSize: '10px', fontFamily: PIXEL_FONT, color: '#ffffff'
+    // Centre: move counter
+    this.moveText = this.add.text(W / 2, 10, 'MOVE:0', {
+      fontSize: '9px', fontFamily: PIXEL_FONT, color: '#ffffff'
     }).setOrigin(0.5, 0);
 
-    // Undo icons (pixel style)
+    // Right: undo
     this._undoIcons = [];
     for (let i = 0; i < 3; i++) {
-      const icon = this.add.text(W - 16 - i * 26, 12, 'U', {
-        fontSize: '10px', fontFamily: PIXEL_FONT, color: '#00ff88'
+      const icon = this.add.text(W - 14 - i * 24, 10, 'U', {
+        fontSize: '9px', fontFamily: PIXEL_FONT, color: '#00ff88'
       }).setOrigin(0.5, 0).setInteractive({ useHandCursor: true });
       icon.on('pointerup', () => this._undo());
       this._undoIcons.push(icon);
     }
     this._refreshUndoUI();
 
-    // Menu button
-    this._pixelBtn(14, 78, 56, 22, '≡MENU', () => this.scene.start('MenuScene'));
-
-    // Retry button
-    this._pixelBtn(W - 72, 78, 58, 22, '↺RETRY', () => this.scene.start('GameScene', { levelId: this.levelId }));
+    // Buttons row
+    this._pixelBtn(10, 66, 56, 24, 'MENU', () => this.scene.start('MenuScene'));
+    this._pixelBtn(W - 70, 66, 60, 24, 'RETRY', () => this.scene.start('GameScene', { levelId: this.levelId }));
   }
 
   _pixelBtn(x, y, w, h, label, cb) {
