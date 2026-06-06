@@ -404,12 +404,28 @@ class GameScene extends Phaser.Scene {
     if (this.selected === animal) { this.selected = null; }
 
     animal.exitAnimation(exitDir);
+    this._spawnExitParticles(animal.container.x, animal.container.y);
+  }
 
-    const flash = this.add.graphics();
-    flash.fillStyle(0xffffff, 0.35);
-    flash.fillRect(0, 0, this.scale.width, this.scale.height);
-    this.tweens.add({ targets: flash, alpha: 0, duration: 180,
-      onComplete: () => flash.destroy() });
+  _spawnExitParticles(x, y) {
+    const colors = [0xffdd44, 0x88ff44, 0x44ddff, 0xff88cc];
+    for (let i = 0; i < 6; i++) {
+      const star = this.add.graphics();
+      star.fillStyle(colors[i % colors.length], 1);
+      star.fillCircle(0, 0, 5);
+      star.setPosition(x + Phaser.Math.Between(-20, 20), y + Phaser.Math.Between(-10, 10));
+      this.tweens.add({
+        targets: star,
+        x: star.x + Phaser.Math.Between(-40, 40),
+        y: star.y + Phaser.Math.Between(-50, 10),
+        alpha: 0,
+        scaleX: 0.2,
+        scaleY: 0.2,
+        duration: 400 + i * 40,
+        ease: 'Cubic.easeOut',
+        onComplete: () => star.destroy()
+      });
+    }
   }
 
   _checkWin() {
