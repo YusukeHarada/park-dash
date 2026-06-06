@@ -147,7 +147,7 @@ var LEVELS = [
   // ══ 7×7 Levels 11-15 ══════════════════════════════════════════════
 
   {
-    id: 11, gridSize: 7, theme: '大草原', par: 7,
+    id: 11, gridSize: 7, theme: '大草原', par: 8,
     // 7x7 intro — most animals can exit freely
     //   0 1 2 3 4 5 6
     // 0 . a a . b . .
