@@ -36,7 +36,7 @@ class MenuScene extends Phaser.Scene {
       const row  = Math.floor(i / cols);
       const x    = startX + col * (btnW + gapX);
       const y    = startY + row * (btnH + gapY);
-      const stars = prog[level.id] || 0;
+      const stars = Math.min(3, Math.max(0, parseInt(prog[level.id]) || 0));
       const locked = level.id > 1 && !prog[level.id - 1];
       this._levelBtn(level, x, y, btnW, btnH, stars, locked);
     });
