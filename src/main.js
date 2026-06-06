@@ -6,11 +6,13 @@ var config = {
   scale: {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,
-    parent: document.body
+    parent: 'game-container',
+    expandParent: false
   },
   scene: [MenuScene, GameScene],
   input: {
-    touch: { capture: true }
+    touch: { capture: true },
+    activePointers: 2
   }
 };
 
