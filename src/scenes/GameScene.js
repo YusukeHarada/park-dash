@@ -45,13 +45,22 @@ class GameScene extends Phaser.Scene {
 
   _drawBackground(W, H) {
     const bg = this.add.graphics();
-    bg.fillStyle(0x3a7a30, 1);
+    // Gradient-like background (dark at top, lighter mid)
+    bg.fillStyle(0x2a5a22, 1);
     bg.fillRect(0, 0, W, H);
-    bg.fillStyle(0x4a8a40, 0.3);
-    for (let i = 0; i < 14; i++) {
+    bg.fillStyle(0x3a7a30, 1);
+    bg.fillRect(0, H * 0.2, W, H * 0.8);
+    // Decorative grass tufts
+    bg.fillStyle(0x4a8a40, 0.25);
+    for (let i = 0; i < 16; i++) {
       bg.fillEllipse((i * 67 + 23) % W, (i * 83 + 41) % H,
-        50 + (i * 11) % 30, 25 + (i * 7) % 15);
+        60 + (i * 13) % 40, 20 + (i * 7) % 15);
     }
+    // Floor shadow under grid
+    const gs = this.gridSize, cs = this.cellSize;
+    const ox = this.gridOffsetX, oy = this.gridOffsetY;
+    bg.fillStyle(0x000000, 0.18);
+    bg.fillRoundedRect(ox + 6, oy + gs * cs + 4, gs * cs, 14, 4);
   }
 
   _drawGrid() {
@@ -61,11 +70,26 @@ class GameScene extends Phaser.Scene {
     const gs = this.gridSize;
     const g  = this.add.graphics();
 
-    // Cell backgrounds
+    // Cell backgrounds with subtle 3D tile effect
     for (let r = 0; r < gs; r++) {
       for (let c = 0; c < gs; c++) {
-        g.fillStyle((r + c) % 2 === 0 ? 0x68a856 : 0x589048, 1);
-        g.fillRect(ox + c * cs + 1, oy + r * cs + 1, cs - 2, cs - 2);
+        const even = (r + c) % 2 === 0;
+        const base = even ? 0x68a856 : 0x589048;
+        const dark = even ? 0x4a7a3a : 0x3a6a2a;
+        const lite = even ? 0x7abb68 : 0x6aab58;
+        const cx = ox + c * cs + 1, cy = oy + r * cs + 1;
+        const cw = cs - 2, ch = cs - 2;
+        // Base fill
+        g.fillStyle(base, 1);
+        g.fillRect(cx, cy, cw, ch);
+        // Top-left highlight strip
+        g.fillStyle(lite, 0.35);
+        g.fillRect(cx, cy, cw, 4);
+        g.fillRect(cx, cy, 4, ch);
+        // Bottom-right shadow strip
+        g.fillStyle(dark, 0.4);
+        g.fillRect(cx, cy + ch - 4, cw, 4);
+        g.fillRect(cx + cw - 4, cy, 4, ch);
       }
     }
 

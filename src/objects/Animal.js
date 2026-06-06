@@ -16,52 +16,84 @@ var ANIMAL_BORDER = {
   cat: 0xcc9933, dog: 0x996633
 };
 
+// Side face (right)
+var ANIMAL_SIDE = {
+  sheep: 0xc8c2b5, chick: 0xccaa22, pig: 0xdd8899,
+  rabbit: 0xb8b8dd, cow: 0xa0c8a0, duck: 0x80b060,
+  cat: 0xddbb70, dog: 0xaa7840
+};
+
+// Bottom face
+var ANIMAL_BOTTOM = {
+  sheep: 0xa09a8a, chick: 0xaa8800, pig: 0xbb6677,
+  rabbit: 0x9090bb, cow: 0x80a880, duck: 0x609040,
+  cat: 0xbb9950, dog: 0x885a28
+};
+
 class Animal {
   constructor(scene, data, cellSize, offsetX, offsetY) {
-    this.scene     = scene;
-    this.id        = data.id;
+    this.scene       = scene;
+    this.id          = data.id;
     this.orientation = data.orientation;
-    this.row       = data.row;
-    this.col       = data.col;
-    this.size      = data.size;
-    this.animalType = data.animal;
-    this.cellSize  = cellSize;
-    this.offsetX   = offsetX;
-    this.offsetY   = offsetY;
-    this.isExiting = false;
+    this.row         = data.row;
+    this.col         = data.col;
+    this.size        = data.size;
+    this.animalType  = data.animal;
+    this.cellSize    = cellSize;
+    this.offsetX     = offsetX;
+    this.offsetY     = offsetY;
+    this.isExiting   = false;
 
     this._arrowObjs = [];
-    this._ghostObjs = [];
+    this._depth     = Math.max(4, Math.floor(cellSize * 0.12));
 
     this.container = scene.add.container(0, 0);
     this._createVisual();
   }
 
   _createVisual() {
-    const cs   = this.cellSize;
-    const pad  = 5;
-    const w    = this.orientation === 'H' ? this.size * cs - pad * 2 : cs - pad * 2;
-    const h    = this.orientation === 'V' ? this.size * cs - pad * 2 : cs - pad * 2;
-    const r    = 12;
+    const cs    = this.cellSize;
+    const pad   = 5;
+    const w     = this.orientation === 'H' ? this.size * cs - pad * 2 : cs - pad * 2;
+    const h     = this.orientation === 'V' ? this.size * cs - pad * 2 : cs - pad * 2;
+    const r     = 10;
+    const d     = this._depth;
 
     const fill   = ANIMAL_COLORS[this.animalType];
     const border = ANIMAL_BORDER[this.animalType];
+    const side   = ANIMAL_SIDE[this.animalType];
+    const btm    = ANIMAL_BOTTOM[this.animalType];
 
     // Drop shadow
     const shadow = this.scene.add.graphics();
-    shadow.fillStyle(0x000000, 0.22);
-    shadow.fillRoundedRect(3, 5, w, h, r);
+    shadow.fillStyle(0x000000, 0.20);
+    shadow.fillRoundedRect(d + 3, h + d + 2, w - 2, d, 2);
+    shadow.fillRoundedRect(w + d + 2, d + 3, d, h - 2, 2);
 
-    // Body
+    // Bottom face
+    this.btmGfx = this.scene.add.graphics();
+    this.btmGfx.fillStyle(btm, 1);
+    this.btmGfx.fillRoundedRect(d, h, w, d + 1, 3);
+    this.btmGfx.lineStyle(1, border, 0.4);
+    this.btmGfx.strokeRoundedRect(d, h, w, d + 1, 3);
+
+    // Right face
+    this.sideGfx = this.scene.add.graphics();
+    this.sideGfx.fillStyle(side, 1);
+    this.sideGfx.fillRoundedRect(w, d, d + 1, h, 3);
+    this.sideGfx.lineStyle(1, border, 0.4);
+    this.sideGfx.strokeRoundedRect(w, d, d + 1, h, 3);
+
+    // Top face (main body)
     this.bodyGfx = this.scene.add.graphics();
     this._drawBody(this.bodyGfx, w, h, r, fill, border, false);
 
-    // Selection ring (hidden initially)
+    // Selection ring
     this.ringGfx = this.scene.add.graphics();
 
-    // Emoji
+    // Emojis on top face
     const emoji    = ANIMAL_EMOJI[this.animalType];
-    const fontSize = Math.min(cs * 0.52, 26);
+    const fontSize = Math.min(cs * 0.48, 24);
     if (this.size >= 2 && this.orientation === 'H') {
       this.emoji1 = this._makeEmoji(cs * 0.5,  h / 2, emoji, fontSize);
       this.emoji2 = this._makeEmoji(cs * 1.5,  h / 2, emoji, fontSize);
@@ -76,7 +108,7 @@ class Animal {
       this.emoji1 = this._makeEmoji(w / 2, h / 2, emoji, fontSize * 1.2);
     }
 
-    this.container.add([shadow, this.bodyGfx, this.ringGfx]);
+    this.container.add([shadow, this.btmGfx, this.sideGfx, this.bodyGfx, this.ringGfx]);
     if (this.emoji3) this.container.add(this.emoji3);
     if (this.emoji2) this.container.add(this.emoji2);
     this.container.add(this.emoji1);
@@ -95,13 +127,21 @@ class Animal {
 
   _drawBody(gfx, w, h, r, fill, border, highlighted) {
     gfx.clear();
-    gfx.fillStyle(border, 1);
+    // Top-left highlight (light reflection)
+    gfx.fillStyle(0xffffff, 0.18);
     gfx.fillRoundedRect(0, 0, w, h, r);
+    // Main fill
     gfx.fillStyle(fill, 1);
     gfx.fillRoundedRect(2, 2, w - 4, h - 4, r - 2);
+    // Inner gradient shimmer (top strip)
+    gfx.fillStyle(0xffffff, 0.12);
+    gfx.fillRoundedRect(4, 4, w - 8, Math.floor(h * 0.35), r - 2);
+    // Border
+    gfx.lineStyle(highlighted ? 3 : 2, highlighted ? 0xffffff : border, 1);
+    gfx.strokeRoundedRect(0, 0, w, h, r);
     if (highlighted) {
-      gfx.lineStyle(3, 0xffffff, 1);
-      gfx.strokeRoundedRect(-2, -2, w + 4, h + 4, r + 2);
+      gfx.lineStyle(2, 0xffffff, 0.5);
+      gfx.strokeRoundedRect(-3, -3, w + 6, h + 6, r + 3);
     }
   }
 
@@ -167,9 +207,9 @@ class Animal {
     this.scene.tweens.add({
       targets: this.container,
       x: pos.x, y: pos.y,
-      scaleX: 0.6, scaleY: 0.6,
+      scaleX: 0.5, scaleY: 0.5,
       alpha: 0,
-      duration: 260,
+      duration: 280,
       ease: 'Back.easeIn',
       onComplete: () => this.destroy()
     });
@@ -181,16 +221,12 @@ class Animal {
     const w   = this.orientation === 'H' ? this.size * cs - pad * 2 : cs - pad * 2;
     const h   = this.orientation === 'V' ? this.size * cs - pad * 2 : cs - pad * 2;
 
-    this._drawBody(this.bodyGfx, w, h, 12,
+    this._drawBody(this.bodyGfx, w, h, 10,
       ANIMAL_COLORS[this.animalType],
       ANIMAL_BORDER[this.animalType],
       active);
 
     this.ringGfx.clear();
-    if (active) {
-      this.ringGfx.lineStyle(3, 0xffffff, 0.9);
-      this.ringGfx.strokeRoundedRect(-3, -3, w + 6, h + 6, 14);
-    }
   }
 
   // ── Direction arrows ──────────────────────────────────────────
