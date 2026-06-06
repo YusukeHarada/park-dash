@@ -1,20 +1,17 @@
 class GameScene extends Phaser.Scene {
-  constructor() {
-    super({ key: 'GameScene' });
-  }
+  constructor() { super({ key: 'GameScene' }); }
 
   init(data) {
-    this.levelId = data.levelId || 1;
-    this.cellSize = 60;
-    this.gridSize = 6;
-    this.animals = new Map();
-    this.occupancyGrid = [];
+    this.levelId   = data.levelId || 1;
+    this.cellSize  = 60;
+    this.gridSize  = 6;
+    this.animals   = new Map();
+    this.oGrid     = [];      // occupancy grid
     this.moveCount = 0;
-    this.history = [];
-    this.selectedAnimal = null;
-    this.dragStartPointer = null;
-    this.dragStartCell = null;
-    this.isDragging = false;
+    this.undosLeft = 3;
+    this.history   = [];      // array of {id→{row,col}} snapshots
+    this.selected  = null;    // currently selected Animal
+    this.swipeStart = null;   // {x,y} at pointerdown for swipe detection
     this.isAnimating = false;
   }
 
@@ -23,12 +20,10 @@ class GameScene extends Phaser.Scene {
   create() {
     const W = this.scale.width;
     const H = this.scale.height;
+    this.gridOffsetX = Math.floor((W - this.gridSize * this.cellSize) / 2);
+    this.gridOffsetY = 115;
 
-    const totalGridPx = this.gridSize * this.cellSize; // 360
-    this.gridOffsetX = (W - totalGridPx) / 2;          // 20
-    this.gridOffsetY = 120;
-
-    this._initOccupancyGrid();
+    this._initOGrid();
     this._drawBackground(W, H);
     this._drawGrid();
     this._createUI(W);
@@ -36,24 +31,20 @@ class GameScene extends Phaser.Scene {
     this._setupInput();
   }
 
-  _initOccupancyGrid() {
-    this.occupancyGrid = [];
-    for (let r = 0; r < this.gridSize; r++) {
-      this.occupancyGrid.push(new Array(this.gridSize).fill(null));
-    }
+  // ── Grid / Scene init ────────────────────────────────────────────
+
+  _initOGrid() {
+    this.oGrid = Array.from({ length: this.gridSize }, () => new Array(this.gridSize).fill(null));
   }
 
   _drawBackground(W, H) {
     const bg = this.add.graphics();
     bg.fillStyle(0x3a7a30, 1);
     bg.fillRect(0, 0, W, H);
-
-    // Subtle grass patches
     bg.fillStyle(0x4a8a40, 0.3);
-    for (let i = 0; i < 15; i++) {
-      const gx = (i * 67 + 23) % W;
-      const gy = (i * 83 + 41) % H;
-      bg.fillEllipse(gx, gy, 50 + (i * 11) % 30, 25 + (i * 7) % 15);
+    for (let i = 0; i < 14; i++) {
+      bg.fillEllipse((i * 67 + 23) % W, (i * 83 + 41) % H,
+        50 + (i * 11) % 30, 25 + (i * 7) % 15);
     }
   }
 
@@ -62,150 +53,133 @@ class GameScene extends Phaser.Scene {
     const ox = this.gridOffsetX;
     const oy = this.gridOffsetY;
     const gs = this.gridSize;
+    const g  = this.add.graphics();
 
-    const gridGraphics = this.add.graphics();
-
-    // Cell backgrounds (alternating shades)
+    // Cell backgrounds
     for (let r = 0; r < gs; r++) {
       for (let c = 0; c < gs; c++) {
-        const shade = (r + c) % 2 === 0 ? 0x6aaa58 : 0x5a9a48;
-        gridGraphics.fillStyle(shade, 1);
-        gridGraphics.fillRect(ox + c * cs + 1, oy + r * cs + 1, cs - 2, cs - 2);
+        g.fillStyle((r + c) % 2 === 0 ? 0x68a856 : 0x589048, 1);
+        g.fillRect(ox + c * cs + 1, oy + r * cs + 1, cs - 2, cs - 2);
       }
     }
 
-    // Fence-style grid lines
-    gridGraphics.lineStyle(2, 0x3a5a28, 1);
-    for (let i = 0; i <= gs; i++) {
-      gridGraphics.lineBetween(ox + i * cs, oy, ox + i * cs, oy + gs * cs);
-      gridGraphics.lineBetween(ox, oy + i * cs, ox + gs * cs, oy + i * cs);
+    // Inner grid lines
+    g.lineStyle(1, 0x3a5a28, 1);
+    for (let i = 1; i < gs; i++) {
+      g.lineBetween(ox + i * cs, oy, ox + i * cs, oy + gs * cs);
+      g.lineBetween(ox, oy + i * cs, ox + gs * cs, oy + i * cs);
     }
 
-    // Outer border (thicker fence)
-    gridGraphics.lineStyle(4, 0x2a4a18, 1);
-    // Top border (with gap for top exit: cols 2-3)
-    gridGraphics.lineBetween(ox, oy, ox + 2 * cs, oy);
-    gridGraphics.lineBetween(ox + 4 * cs, oy, ox + gs * cs, oy);
-    // Bottom border (with gap for bottom exit: cols 2-3)
-    gridGraphics.lineBetween(ox, oy + gs * cs, ox + 2 * cs, oy + gs * cs);
-    gridGraphics.lineBetween(ox + 4 * cs, oy + gs * cs, ox + gs * cs, oy + gs * cs);
-    // Left border (with gap for left exit: rows 2-3)
-    gridGraphics.lineBetween(ox, oy, ox, oy + 2 * cs);
-    gridGraphics.lineBetween(ox, oy + 4 * cs, ox, oy + gs * cs);
-    // Right border (with gap for right exit: rows 2-3)
-    gridGraphics.lineBetween(ox + gs * cs, oy, ox + gs * cs, oy + 2 * cs);
-    gridGraphics.lineBetween(ox + gs * cs, oy + 4 * cs, ox + gs * cs, oy + gs * cs);
+    // Outer fence (with exit gaps at centre of each side)
+    g.lineStyle(4, 0x2a4a18, 1);
+    const gap = 2 * cs;      // gap width = 2 cells
+    const mid = cs * 2;      // gap starts at col/row 2
 
-    this._drawExitArrows(gridGraphics);
-  }
-
-  _drawExitArrows(g) {
-    const cs = this.cellSize;
-    const ox = this.gridOffsetX;
-    const oy = this.gridOffsetY;
-    const gs = this.gridSize;
-    const arrowColor = 0xffffff;
-    const arrowAlpha = 0.8;
-    const gapCenter = 3 * cs; // center of 2-cell gap (cols/rows 2-3)
-
-    g.fillStyle(arrowColor, arrowAlpha);
-
-    // Top exit arrow (pointing up)
-    const tx = ox + gapCenter;
-    g.fillTriangle(tx - 10, oy - 8, tx + 10, oy - 8, tx, oy - 22);
-
-    // Bottom exit arrow (pointing down)
-    const bx = ox + gapCenter;
+    // Top: gap at cols 2-3
+    g.lineBetween(ox,           oy, ox + mid,        oy);
+    g.lineBetween(ox + mid + gap, oy, ox + gs * cs,  oy);
+    // Bottom
     const by = oy + gs * cs;
-    g.fillTriangle(bx - 10, by + 8, bx + 10, by + 8, bx, by + 22);
-
-    // Left exit arrow (pointing left)
-    const ly = oy + gapCenter;
-    g.fillTriangle(ox - 8, ly - 10, ox - 8, ly + 10, ox - 22, ly);
-
-    // Right exit arrow (pointing right)
+    g.lineBetween(ox,           by, ox + mid,        by);
+    g.lineBetween(ox + mid + gap, by, ox + gs * cs,  by);
+    // Left: gap at rows 2-3
+    g.lineBetween(ox, oy,           ox, oy + mid);
+    g.lineBetween(ox, oy + mid + gap, ox, oy + gs * cs);
+    // Right
     const rx = ox + gs * cs;
-    const ry = oy + gapCenter;
-    g.fillTriangle(rx + 8, ry - 10, rx + 8, ry + 10, rx + 22, ry);
+    g.lineBetween(rx, oy,           rx, oy + mid);
+    g.lineBetween(rx, oy + mid + gap, rx, oy + gs * cs);
+
+    // Exit arrows
+    g.fillStyle(0xffffff, 0.7);
+    const cx = ox + mid + cs;     // horizontal centre of gap
+    const cy = oy + mid + cs;     // vertical centre of gap
+    const as = 10;
+    g.fillTriangle(cx - as, oy - 6, cx + as, oy - 6, cx, oy - 20);
+    g.fillTriangle(cx - as, by + 6, cx + as, by + 6, cx, by + 20);
+    g.fillTriangle(ox - 6, cy - as, ox - 6, cy + as, ox - 20, cy);
+    g.fillTriangle(rx + 6, cy - as, rx + 6, cy + as, rx + 20, cy);
   }
 
   _createUI(W) {
     const levelData = LEVELS[this.levelId - 1];
 
-    // Header background
-    const headerBg = this.add.graphics();
-    headerBg.fillStyle(0x1a4a18, 0.85);
-    headerBg.fillRect(0, 0, W, 110);
+    // Header bg
+    const hdr = this.add.graphics();
+    hdr.fillStyle(0x1a4a18, 0.88);
+    hdr.fillRect(0, 0, W, 108);
 
-    // Level label
-    this.add.text(16, 14, `Level ${this.levelId}`, {
-      fontSize: '22px', fontFamily: 'Arial', color: '#ffffff',
-      fontStyle: 'bold', stroke: '#1a4a18', strokeThickness: 3
+    // Level title
+    this.add.text(14, 12, `Level ${this.levelId}`, {
+      fontSize: '22px', fontFamily: 'Arial Black, Arial',
+      color: '#ffffff', stroke: '#1a4a18', strokeThickness: 4
     });
-
-    this.add.text(16, 40, levelData.theme, {
+    this.add.text(14, 38, levelData.theme, {
       fontSize: '13px', fontFamily: 'Arial', color: '#aaddaa'
     });
 
-    // Move counter
+    // Par display
+    this.add.text(14, 58, `par: ${levelData.par}`, {
+      fontSize: '12px', fontFamily: 'Arial', color: '#88cc66', alpha: 0.9
+    });
+
+    // Move counter (centre)
     this.moveText = this.add.text(W / 2, 20, 'Moves: 0', {
-      fontSize: '20px', fontFamily: 'Arial', color: '#ffffff',
-      fontStyle: 'bold', stroke: '#1a4a18', strokeThickness: 3
+      fontSize: '20px', fontFamily: 'Arial Black, Arial',
+      color: '#ffffff', stroke: '#1a4a18', strokeThickness: 3
     }).setOrigin(0.5, 0);
 
-    // Undo button
-    const undoBg = this.add.graphics();
-    undoBg.fillStyle(0x4a7a30, 1);
-    undoBg.fillRoundedRect(W - 80, 12, 68, 36, 8);
-    undoBg.lineStyle(2, 0x8ab870, 1);
-    undoBg.strokeRoundedRect(W - 80, 12, 68, 36, 8);
-
-    this.undoText = this.add.text(W - 46, 30, '↩ Undo', {
-      fontSize: '14px', fontFamily: 'Arial', color: '#ffffff'
-    }).setOrigin(0.5);
-
-    const undoZone = this.add.zone(W - 80, 12, 68, 36).setOrigin(0).setInteractive({ useHandCursor: true });
-    undoZone.on('pointerup', () => this._undo());
-    undoZone.on('pointerover', () => {
-      undoBg.clear();
-      undoBg.fillStyle(0x6a9a50, 1);
-      undoBg.fillRoundedRect(W - 80, 12, 68, 36, 8);
-      undoBg.lineStyle(2, 0xffffff, 0.6);
-      undoBg.strokeRoundedRect(W - 80, 12, 68, 36, 8);
-    });
-    undoZone.on('pointerout', () => {
-      undoBg.clear();
-      undoBg.fillStyle(0x4a7a30, 1);
-      undoBg.fillRoundedRect(W - 80, 12, 68, 36, 8);
-      undoBg.lineStyle(2, 0x8ab870, 1);
-      undoBg.strokeRoundedRect(W - 80, 12, 68, 36, 8);
-    });
+    // Undo icons (right side)
+    this._undoIcons = [];
+    for (let i = 0; i < 3; i++) {
+      const icon = this.add.text(W - 22 - i * 28, 16, '↩', {
+        fontSize: '22px', fontFamily: 'Arial', color: '#88dd44'
+      }).setOrigin(0.5, 0).setInteractive({ useHandCursor: true });
+      icon.on('pointerup', () => this._undo());
+      this._undoIcons.push(icon);
+    }
+    this._refreshUndoUI();
 
     // Menu button
     const menuBg = this.add.graphics();
     menuBg.fillStyle(0x2a5a18, 1);
-    menuBg.fillRoundedRect(16, 60, 60, 32, 6);
-    this.add.text(46, 76, '≡ Menu', {
+    menuBg.fillRoundedRect(14, 75, 60, 26, 6);
+    this.add.text(44, 88, '≡ Menu', {
       fontSize: '12px', fontFamily: 'Arial', color: '#c8e8a0'
     }).setOrigin(0.5);
-    const menuZone = this.add.zone(16, 60, 60, 32).setOrigin(0).setInteractive({ useHandCursor: true });
-    menuZone.on('pointerup', () => this.scene.start('MenuScene'));
+    this.add.zone(14, 75, 60, 26).setOrigin(0)
+      .setInteractive({ useHandCursor: true })
+      .on('pointerup', () => this.scene.start('MenuScene'));
+
+    // Retry button
+    const retBg = this.add.graphics();
+    retBg.fillStyle(0x2a5a18, 1);
+    retBg.fillRoundedRect(W - 80, 70, 66, 26, 6);
+    this.add.text(W - 47, 83, '↺ Retry', {
+      fontSize: '12px', fontFamily: 'Arial', color: '#c8e8a0'
+    }).setOrigin(0.5);
+    this.add.zone(W - 80, 70, 66, 26).setOrigin(0)
+      .setInteractive({ useHandCursor: true })
+      .on('pointerup', () => this.scene.start('GameScene', { levelId: this.levelId }));
+  }
+
+  _refreshUndoUI() {
+    this._undoIcons.forEach((icon, i) => {
+      const active = (2 - i) < this.undosLeft;
+      icon.setAlpha(active ? 1 : 0.28);
+      icon.setColor(active ? '#88dd44' : '#446633');
+    });
   }
 
   _loadLevel() {
     const levelData = LEVELS[this.levelId - 1];
-    if (!levelData) {
-      this.scene.start('MenuScene');
-      return;
-    }
+    if (!levelData) { this.scene.start('MenuScene'); return; }
 
     levelData.animals.forEach(data => {
-      const animal = new Animal(this, data, this.cellSize, this.gridOffsetX, this.gridOffsetY);
-      this.animals.set(data.id, animal);
-
-      // Mark occupancy
-      animal.getOccupiedCells().forEach(({ row, col }) => {
-        this.occupancyGrid[row][col] = data.id;
+      const a = new Animal(this, data, this.cellSize, this.gridOffsetX, this.gridOffsetY);
+      this.animals.set(data.id, a);
+      a.getOccupiedCells().forEach(({ row, col }) => {
+        this.oGrid[row][col] = data.id;
       });
     });
   }
@@ -213,331 +187,350 @@ class GameScene extends Phaser.Scene {
   _setupInput() {
     this.input.on('pointerdown', this._onPointerDown, this);
     this.input.on('pointermove', this._onPointerMove, this);
-    this.input.on('pointerup', this._onPointerUp, this);
+    this.input.on('pointerup',   this._onPointerUp,   this);
   }
+
+  // ── Input ────────────────────────────────────────────────────────
 
   _onPointerDown(pointer) {
     if (this.isAnimating) return;
+    this.swipeStart = { x: pointer.x, y: pointer.y };
 
     const col = Math.floor((pointer.x - this.gridOffsetX) / this.cellSize);
     const row = Math.floor((pointer.y - this.gridOffsetY) / this.cellSize);
 
-    if (row < 0 || row >= this.gridSize || col < 0 || col >= this.gridSize) return;
+    if (row < 0 || row >= this.gridSize || col < 0 || col >= this.gridSize) {
+      this._deselect();
+      return;
+    }
 
-    const animalId = this.occupancyGrid[row][col];
-    if (!animalId) return;
+    const id = this.oGrid[row][col];
+    if (!id) { this._deselect(); return; }
 
-    const animal = this.animals.get(animalId);
-    if (!animal || animal.isExiting) return;
+    const animal = this.animals.get(id);
+    if (!animal || animal.isExiting) { this._deselect(); return; }
 
-    this._saveHistorySnapshot();
-    this.selectedAnimal = animal;
-    this.isDragging = true;
-    this.dragStartPointer = { x: pointer.x, y: pointer.y };
-    this.dragStartCell = animal.orientation === 'H' ? animal.col : animal.row;
+    if (this.selected === animal) return; // already selected
+
+    this._deselect();
+    this.selected = animal;
     animal.setHighlight(true);
+    this._showArrows(animal);
   }
 
   _onPointerMove(pointer) {
-    if (!this.isDragging || !this.selectedAnimal || this.selectedAnimal.isExiting) return;
+    if (!this.selected || this.isAnimating || !this.swipeStart) return;
 
-    const cs = this.cellSize;
-    const animal = this.selectedAnimal;
-    const delta = animal.orientation === 'H'
-      ? pointer.x - this.dragStartPointer.x
-      : pointer.y - this.dragStartPointer.y;
+    const dx = pointer.x - this.swipeStart.x;
+    const dy = pointer.y - this.swipeStart.y;
+    const THRESHOLD = 22;
 
-    const rawOffset = Math.round(delta / cs);
-    const clampedOffset = this._clampMove(animal, rawOffset);
-    const newCell = this.dragStartCell + clampedOffset;
-
-    const currentCell = animal.orientation === 'H' ? animal.col : animal.row;
-    if (newCell !== currentCell) {
-      this._updateOccupancyGrid(animal, newCell);
-      animal.moveTo(newCell);
-      this._checkForExit(animal);
+    if (this.selected.orientation === 'H') {
+      if (Math.abs(dx) > THRESHOLD) {
+        this._doAutoSlide(dx > 0 ? 'right' : 'left');
+      }
+    } else {
+      if (Math.abs(dy) > THRESHOLD) {
+        this._doAutoSlide(dy > 0 ? 'down' : 'up');
+      }
     }
   }
 
-  _onPointerUp(pointer) {
-    if (!this.selectedAnimal) return;
-
-    const animal = this.selectedAnimal;
-    const currentCell = animal.orientation === 'H' ? animal.col : animal.row;
-
-    if (currentCell !== this.dragStartCell && !animal.isExiting) {
-      this.moveCount++;
-      this._updateMoveCounter();
-    } else if (currentCell === this.dragStartCell) {
-      // No actual movement — discard the snapshot
-      this.history.pop();
-    }
-
-    if (!animal.isExiting) {
-      animal.setHighlight(false);
-    }
-
-    this.selectedAnimal = null;
-    this.isDragging = false;
-    this.dragStartPointer = null;
-    this.dragStartCell = null;
-
-    this._checkWin();
+  _onPointerUp() {
+    this.swipeStart = null;
   }
 
-  _clampMove(animal, requestedOffset) {
-    if (requestedOffset === 0) return 0;
-    const dir = requestedOffset > 0 ? 1 : -1;
-    const steps = Math.abs(requestedOffset);
-    let validSteps = 0;
+  // ── Selection / Arrows ──────────────────────────────────────────
 
-    for (let s = 1; s <= steps; s++) {
-      const testCell = this.dragStartCell + dir * s;
-      if (!this._canMoveToCell(animal, testCell)) break;
-      validSteps = s;
-    }
-
-    return dir * validSteps;
+  _deselect() {
+    if (!this.selected) return;
+    this.selected.setHighlight(false);
+    this.selected.hideArrows();
+    this.selected = null;
   }
 
-  _canMoveToCell(animal, newCell) {
+  _showArrows(animal) {
+    const canLeft  = animal.orientation === 'H' && this._maxSlide(animal, -1) > 0;
+    const canRight = animal.orientation === 'H' && this._maxSlide(animal,  1) > 0;
+    const canUp    = animal.orientation === 'V' && this._maxSlide(animal, -1) > 0;
+    const canDown  = animal.orientation === 'V' && this._maxSlide(animal,  1) > 0;
+
+    animal.showArrows(canLeft, canRight, canUp, canDown, (dir) => {
+      this._doAutoSlide(dir);
+    });
+  }
+
+  // ── Auto-slide ───────────────────────────────────────────────────
+
+  _doAutoSlide(direction) {
+    const animal = this.selected;
+    if (!animal || animal.isExiting || this.isAnimating) return;
+
+    // Validate direction matches orientation
+    const isHDir = direction === 'left' || direction === 'right';
+    const isVDir = direction === 'up'   || direction === 'down';
+    if ((animal.orientation === 'H' && !isHDir) ||
+        (animal.orientation === 'V' && !isVDir)) return;
+
+    const dir1D = (direction === 'right' || direction === 'down') ? 1 : -1;
+    const steps = this._maxSlide(animal, dir1D);
+    if (steps === 0) return;
+
+    this._saveSnapshot();
+    this._deselect();
+
+    const startCell = animal.orientation === 'H' ? animal.col : animal.row;
+    const newCell   = startCell + dir1D * steps;
+
+    this._updateOGrid(animal, newCell);
+    animal.moveTo(newCell);
+
+    this.moveCount++;
+    this._updateMoveCounter();
+    this.swipeStart = null;
+
+    this.isAnimating = true;
+    this.time.delayedCall(110, () => {
+      this.isAnimating = false;
+      this._checkForExit(animal, direction);
+      this._checkWin();
+    });
+  }
+
+  // ── Collision / move calculation ─────────────────────────────────
+
+  _maxSlide(animal, dir) {
+    // dir: +1 or -1
+    // Returns number of steps animal can slide in that direction (≥0).
+    // Stops at blocking animal or at exit position (first step that would exit).
     const gs = this.gridSize;
-    // Allow going beyond boundary (enables exit)
-    if (animal.orientation === 'H') {
-      // Check cells that would be newly occupied
-      const newCol = newCell;
+    const start = animal.orientation === 'H' ? animal.col : animal.row;
+    let valid = 0;
+
+    for (let s = 1; s <= gs * 2; s++) {
+      const test = start + dir * s;
+
+      // Check cells for collision (skip off-grid)
+      let blocked = false;
       for (let i = 0; i < animal.size; i++) {
-        const c = newCol + i;
-        if (c < 0 || c >= gs) continue; // beyond grid is OK (exit)
-        const r = animal.row;
-        const occupant = this.occupancyGrid[r][c];
-        if (occupant && occupant !== animal.id) return false;
+        const r = animal.orientation === 'V' ? test + i : animal.row;
+        const c = animal.orientation === 'H' ? test + i : animal.col;
+        if (r < 0 || r >= gs || c < 0 || c >= gs) continue;
+        const occ = this.oGrid[r][c];
+        if (occ && occ !== animal.id) { blocked = true; break; }
       }
-      // Check if completely out of bounds in one direction
-      if (newCol >= gs || newCol + animal.size <= 0) return true;
-    } else {
-      const newRow = newCell;
-      for (let i = 0; i < animal.size; i++) {
-        const r = newRow + i;
-        if (r < 0 || r >= gs) continue;
-        const c = animal.col;
-        const occupant = this.occupancyGrid[r][c];
-        if (occupant && occupant !== animal.id) return false;
-      }
-      if (newRow >= gs || newRow + animal.size <= 0) return true;
+      if (blocked) break;
+
+      valid = s;
+
+      // Did we reach the exit position?
+      const exits = animal.orientation === 'H'
+        ? (dir > 0 ? test >= gs : test + animal.size <= 0)
+        : (dir > 0 ? test >= gs : test + animal.size <= 0);
+      if (exits) break;
     }
-    return true;
+    return valid;
   }
 
-  _updateOccupancyGrid(animal, newPrimaryCell) {
-    // Clear old
+  _updateOGrid(animal, newPrimary) {
+    // Clear old cells
     animal.getOccupiedCells().forEach(({ row, col }) => {
-      if (row >= 0 && row < this.gridSize && col >= 0 && col < this.gridSize) {
-        this.occupancyGrid[row][col] = null;
-      }
+      if (row >= 0 && row < this.gridSize && col >= 0 && col < this.gridSize)
+        this.oGrid[row][col] = null;
     });
-
-    // Update position
-    if (animal.orientation === 'H') {
-      animal.col = newPrimaryCell;
-    } else {
-      animal.row = newPrimaryCell;
-    }
-
-    // Set new
+    // Update logical position
+    if (animal.orientation === 'H') animal.col = newPrimary;
+    else                             animal.row = newPrimary;
+    // Set new cells
     animal.getOccupiedCells().forEach(({ row, col }) => {
-      if (row >= 0 && row < this.gridSize && col >= 0 && col < this.gridSize) {
-        this.occupancyGrid[row][col] = animal.id;
-      }
+      if (row >= 0 && row < this.gridSize && col >= 0 && col < this.gridSize)
+        this.oGrid[row][col] = animal.id;
     });
   }
 
-  _checkForExit(animal) {
+  // ── Exit / Win ───────────────────────────────────────────────────
+
+  _checkForExit(animal, direction) {
     if (animal.isExiting) return;
     const gs = this.gridSize;
-    let direction = null;
+    let exitDir = null;
 
     if (animal.orientation === 'H') {
-      if (animal.col >= gs) direction = 'right';
-      else if (animal.col + animal.size <= 0) direction = 'left';
+      if (animal.col >= gs)              exitDir = 'right';
+      else if (animal.col + animal.size <= 0) exitDir = 'left';
     } else {
-      if (animal.row >= gs) direction = 'down';
-      else if (animal.row + animal.size <= 0) direction = 'up';
+      if (animal.row >= gs)              exitDir = 'down';
+      else if (animal.row + animal.size <= 0) exitDir = 'up';
     }
 
-    if (direction) {
-      animal.isExiting = true;
+    if (!exitDir) return;
 
-      // Clear from occupancy
-      animal.getOccupiedCells().forEach(({ row, col }) => {
-        if (row >= 0 && row < gs && col >= 0 && col < gs) {
-          this.occupancyGrid[row][col] = null;
-        }
-      });
+    animal.isExiting = true;
+    // Clear oGrid
+    animal.getOccupiedCells().forEach(({ row, col }) => {
+      if (row >= 0 && row < gs && col >= 0 && col < gs)
+        this.oGrid[row][col] = null;
+    });
+    this.animals.delete(animal.id);
 
-      this.animals.delete(animal.id);
-      if (this.selectedAnimal === animal) {
-        this.selectedAnimal = null;
-        this.isDragging = false;
-      }
+    if (this.selected === animal) { this.selected = null; }
 
-      this.moveCount++;
-      this._updateMoveCounter();
+    animal.exitAnimation(exitDir);
 
-      this.isAnimating = true;
-      animal.exitAnimation(direction);
-
-      // Brief flash effect
-      const flash = this.add.graphics();
-      flash.fillStyle(0xffffff, 0.4);
-      flash.fillRect(0, 0, this.scale.width, this.scale.height);
-      this.tweens.add({
-        targets: flash,
-        alpha: 0,
-        duration: 150,
-        onComplete: () => flash.destroy()
-      });
-
-      this.time.delayedCall(240, () => {
-        this.isAnimating = false;
-        this._checkWin();
-      });
-    }
+    // Brief flash
+    const flash = this.add.graphics();
+    flash.fillStyle(0xffffff, 0.35);
+    flash.fillRect(0, 0, this.scale.width, this.scale.height);
+    this.tweens.add({ targets: flash, alpha: 0, duration: 180,
+      onComplete: () => flash.destroy() });
   }
 
   _checkWin() {
     if (this.animals.size === 0 && !this.isAnimating) {
-      this.time.delayedCall(300, () => this._showWinScreen());
+      this.time.delayedCall(350, () => this._showWinScreen());
     }
   }
 
-  _showWinScreen() {
-    this._saveProgress();
+  // ── Win screen ───────────────────────────────────────────────────
 
-    const W = this.scale.width;
-    const H = this.scale.height;
+  _showWinScreen() {
+    const par    = LEVELS[this.levelId - 1].par;
+    const stars  = this.moveCount <= par ? 3
+                 : this.moveCount <= Math.floor(par * 1.5) ? 2 : 1;
+
+    this._saveProgress(stars);
+
+    const W  = this.scale.width;
+    const H  = this.scale.height;
+    const pw = 300, ph = 310;
+    const px = (W - pw) / 2;
+    const py = (H - ph) / 2;
 
     // Overlay
-    const overlay = this.add.graphics();
-    overlay.fillStyle(0x000000, 0);
-    overlay.fillRect(0, 0, W, H);
-    this.tweens.add({ targets: overlay, fillAlpha: 0.65, duration: 300 });
+    const ov = this.add.graphics();
+    ov.fillStyle(0x000000, 0);
+    ov.fillRect(0, 0, W, H);
+    this.tweens.add({ targets: ov, fillAlpha: 0.65, duration: 300 });
 
     // Panel
-    const panelW = 300;
-    const panelH = 260;
-    const px = (W - panelW) / 2;
-    const py = (H - panelH) / 2;
-
     const panel = this.add.graphics();
-    panel.fillStyle(0x2a6a22, 1);
-    panel.fillRoundedRect(px, py, panelW, panelH, 20);
-    panel.lineStyle(3, 0x88dd44, 1);
-    panel.strokeRoundedRect(px, py, panelW, panelH, 20);
+    panel.fillStyle(0x1e5a18, 1);
+    panel.fillRoundedRect(px, py, pw, ph, 20);
+    panel.lineStyle(3, 0x66cc33, 1);
+    panel.strokeRoundedRect(px, py, pw, ph, 20);
 
-    this.add.text(W / 2, py + 40, '🎉 Level Clear!', {
-      fontSize: '28px', fontFamily: 'Arial', color: '#ffffff',
-      fontStyle: 'bold', stroke: '#1a4a18', strokeThickness: 4
+    this.add.text(W / 2, py + 32, '🎉 Level Clear!', {
+      fontSize: '26px', fontFamily: 'Arial Black, Arial',
+      color: '#ffffff', stroke: '#1a4a18', strokeThickness: 4
     }).setOrigin(0.5);
 
-    this.add.text(W / 2, py + 85, `Moves: ${this.moveCount}`, {
-      fontSize: '20px', fontFamily: 'Arial', color: '#ccff88'
+    // Stars (animated)
+    const starStr = '⭐'.repeat(stars) + '☆'.repeat(3 - stars);
+    const starTxt = this.add.text(W / 2, py + 75, '   ', {
+      fontSize: '32px'
+    }).setOrigin(0.5).setAlpha(0);
+
+    this.time.delayedCall(200, () => {
+      starTxt.setText(starStr);
+      this.tweens.add({ targets: starTxt, alpha: 1, scaleX: 1.2, scaleY: 1.2,
+        duration: 300, yoyo: true, ease: 'Bounce.easeOut' });
+    });
+
+    this.add.text(W / 2, py + 115, `${this.moveCount} moves  (par: ${par})`, {
+      fontSize: '16px', fontFamily: 'Arial',
+      color: stars === 3 ? '#88ff44' : '#ccddaa'
     }).setOrigin(0.5);
 
-    this.add.text(W / 2, py + 115, '全員脱出成功！', {
-      fontSize: '15px', fontFamily: 'Arial', color: '#a0e080'
+    const label = stars === 3 ? 'Perfect! 🌟' : stars === 2 ? 'Great!' : 'Cleared!';
+    this.add.text(W / 2, py + 145, label, {
+      fontSize: '15px', fontFamily: 'Arial', color: '#aaddaa'
     }).setOrigin(0.5);
 
+    // Buttons
+    const hasPrev = this.levelId > 1;
     const hasNext = this.levelId < LEVELS.length;
 
+    if (stars < 3) {
+      this._winBtn(W / 2, py + 195, '↺ Retry', 0x3a6a28, 0x5a8a48, () => {
+        this.scene.start('GameScene', { levelId: this.levelId });
+      });
+    }
     if (hasNext) {
-      this._makeButton(W / 2, py + 168, 'Next Level →', 0x44aa22, 0x66cc44, () => {
+      this._winBtn(W / 2, py + (stars < 3 ? 245 : 210), 'Next Level →', 0x44aa22, 0x66cc44, () => {
         this.scene.start('GameScene', { levelId: this.levelId + 1 });
       });
     }
-
-    this._makeButton(W / 2, py + 218, '≡ Menu', 0x2a5a18, 0x4a7a38, () => {
+    this._winBtn(W / 2, py + (hasNext ? (stars < 3 ? 285 : 255) : (stars < 3 ? 245 : 210)), '≡ Menu', 0x2a5a18, 0x4a7a38, () => {
       this.scene.start('MenuScene');
     });
   }
 
-  _makeButton(cx, cy, label, fillColor, hoverColor, callback) {
-    const bw = 180;
-    const bh = 40;
-    const bx = cx - bw / 2;
-    const by = cy - bh / 2;
-
+  _winBtn(cx, cy, label, fill, hover, cb) {
+    const bw = 200, bh = 38;
+    const bx = cx - bw / 2, by = cy - bh / 2;
     const bg = this.add.graphics();
-    bg.fillStyle(fillColor, 1);
-    bg.fillRoundedRect(bx, by, bw, bh, 10);
-    bg.lineStyle(2, 0x88dd44, 0.8);
-    bg.strokeRoundedRect(bx, by, bw, bh, 10);
-
-    this.add.text(cx, cy, label, {
-      fontSize: '16px', fontFamily: 'Arial', color: '#ffffff', fontStyle: 'bold'
-    }).setOrigin(0.5);
-
-    const zone = this.add.zone(bx, by, bw, bh).setOrigin(0).setInteractive({ useHandCursor: true });
-    zone.on('pointerup', callback);
-    zone.on('pointerover', () => {
+    const draw = (c) => {
       bg.clear();
-      bg.fillStyle(hoverColor, 1);
-      bg.fillRoundedRect(bx, by, bw, bh, 10);
-      bg.lineStyle(2, 0xffffff, 0.6);
-      bg.strokeRoundedRect(bx, by, bw, bh, 10);
-    });
-    zone.on('pointerout', () => {
-      bg.clear();
-      bg.fillStyle(fillColor, 1);
+      bg.fillStyle(c, 1);
       bg.fillRoundedRect(bx, by, bw, bh, 10);
       bg.lineStyle(2, 0x88dd44, 0.8);
       bg.strokeRoundedRect(bx, by, bw, bh, 10);
-    });
+    };
+    draw(fill);
+    this.add.text(cx, cy, label, {
+      fontSize: '15px', fontFamily: 'Arial', color: '#ffffff', fontStyle: 'bold'
+    }).setOrigin(0.5);
+    this.add.zone(bx, by, bw, bh).setOrigin(0).setInteractive({ useHandCursor: true })
+      .on('pointerup', cb)
+      .on('pointerover', () => draw(hover))
+      .on('pointerout', () => draw(fill));
   }
 
-  _saveHistorySnapshot() {
-    const snapshot = {};
-    this.animals.forEach((animal, id) => {
-      snapshot[id] = { row: animal.row, col: animal.col };
-    });
-    this.history.push(snapshot);
+  // ── Undo ─────────────────────────────────────────────────────────
+
+  _saveSnapshot() {
+    const snap = {};
+    this.animals.forEach((a, id) => { snap[id] = { row: a.row, col: a.col }; });
+    this.history.push(snap);
   }
 
   _undo() {
-    if (this.isAnimating || this.history.length === 0) return;
+    if (this.isAnimating || this.history.length === 0 || this.undosLeft === 0) return;
 
-    const snapshot = this.history.pop();
+    const snap = this.history.pop();
+    this._deselect();
+    this._initOGrid();
 
-    // Rebuild occupancy
-    this._initOccupancyGrid();
-
-    this.animals.forEach((animal, id) => {
-      const state = snapshot[id];
-      if (!state) return;
-      animal.row = state.row;
-      animal.col = state.col;
-      animal.moveTo(animal.orientation === 'H' ? animal.col : animal.row);
-      animal.getOccupiedCells().forEach(({ row, col }) => {
-        if (row >= 0 && row < this.gridSize && col >= 0 && col < this.gridSize) {
-          this.occupancyGrid[row][col] = id;
-        }
+    this.animals.forEach((a, id) => {
+      const s = snap[id];
+      if (!s) return;
+      a.row = s.row;
+      a.col = s.col;
+      a.moveTo(a.orientation === 'H' ? a.col : a.row);
+      a.getOccupiedCells().forEach(({ row, col }) => {
+        if (row >= 0 && row < this.gridSize && col >= 0 && col < this.gridSize)
+          this.oGrid[row][col] = id;
       });
     });
 
     if (this.moveCount > 0) this.moveCount--;
+    this.undosLeft--;
     this._updateMoveCounter();
+    this._refreshUndoUI();
   }
 
   _updateMoveCounter() {
     this.moveText.setText(`Moves: ${this.moveCount}`);
   }
 
-  _saveProgress() {
+  // ── Progress ─────────────────────────────────────────────────────
+
+  _saveProgress(stars) {
     try {
-      const raw = localStorage.getItem('animalEscapeProgress') || '[]';
-      const completed = new Set(JSON.parse(raw));
-      completed.add(this.levelId);
-      localStorage.setItem('animalEscapeProgress', JSON.stringify([...completed]));
+      const raw  = localStorage.getItem('animalEscapeProgress') || '{}';
+      const prog = JSON.parse(raw);
+      prog[this.levelId] = Math.max(prog[this.levelId] || 0, stars);
+      localStorage.setItem('animalEscapeProgress', JSON.stringify(prog));
     } catch (e) {}
   }
 }
