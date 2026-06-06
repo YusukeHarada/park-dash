@@ -17,3 +17,9 @@ var config = {
 };
 
 var game = new Phaser.Game(config);
+
+// 起動成功したらローディング表示を消す
+game.events.once('ready', function() {
+  var el = document.getElementById('error-msg');
+  if (el) el.style.display = 'none';
+});

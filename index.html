@@ -28,37 +28,75 @@
       -webkit-user-select: none;
     }
     #error-msg {
-      display: none;
+      position: fixed;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
       color: #fff;
-      background: #c0392b;
-      padding: 16px;
-      margin: 20px;
+      background: rgba(0,0,0,0.6);
+      padding: 10px 20px;
       border-radius: 8px;
       font-family: sans-serif;
-      font-size: 14px;
+      font-size: 13px;
       white-space: pre-wrap;
       word-break: break-all;
+      max-width: 90%;
+      text-align: center;
+      z-index: 9999;
     }
   </style>
 </head>
 <body>
   <div id="game-container"></div>
-  <div id="error-msg"></div>
+  <div id="error-msg">読み込み中...</div>
 
   <script>
     window.onerror = function(msg, src, line, col, err) {
       var el = document.getElementById('error-msg');
-      el.style.display = 'block';
-      el.textContent = 'エラー: ' + msg + '\n' + src + ':' + line;
+      el.style.background = '#c0392b';
+      el.textContent = 'エラー: ' + msg + '\n' + (src || '') + ':' + line;
     };
+    function onPhaserError() {
+      var el = document.getElementById('error-msg');
+      el.style.background = '#c0392b';
+      el.textContent = 'Phaserの読み込みに失敗しました。\nネットワーク接続を確認してください。';
+    }
+    function loadScript(src, onload, onerror) {
+      var s = document.createElement('script');
+      s.src = src;
+      s.onload = onload;
+      s.onerror = onerror;
+      document.body.appendChild(s);
+    }
+    // jsdelivrが失敗したらunpkgにフォールバック
+    loadScript(
+      'https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js',
+      function() { loadGameScripts(); },
+      function() {
+        loadScript(
+          'https://unpkg.com/phaser@3.60.0/dist/phaser.min.js',
+          function() { loadGameScripts(); },
+          onPhaserError
+        );
+      }
+    );
+    function loadGameScripts() {
+      var scripts = [
+        'src/data/levels.js',
+        'src/objects/Animal.js',
+        'src/scenes/MenuScene.js',
+        'src/scenes/GameScene.js',
+        'src/main.js'
+      ];
+      var i = 0;
+      function next() {
+        if (i >= scripts.length) return;
+        loadScript(scripts[i++], next, function() {
+          window.onerror('スクリプト読み込み失敗: ' + scripts[i-1]);
+        });
+      }
+      next();
+    }
   </script>
-  <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"
-    onerror="document.getElementById('error-msg').style.display='block';document.getElementById('error-msg').textContent='Phaserの読み込みに失敗しました。ネットワーク接続を確認してください。';">
-  </script>
-  <script src="src/data/levels.js"></script>
-  <script src="src/objects/Animal.js"></script>
-  <script src="src/scenes/MenuScene.js"></script>
-  <script src="src/scenes/GameScene.js"></script>
-  <script src="src/main.js"></script>
 </body>
 </html>
